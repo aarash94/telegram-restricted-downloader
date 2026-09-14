@@ -1,35 +1,37 @@
 # telegram-restricted-downloader
 
 Personal bot: send it a `t.me/...` message link, it sends the message back, even from copy-protected chats.
-Your own account does the fetching, so it must already be a member of private chats.
+The logged-in account does the fetching, so it must already be a member of private chats.
 
 ## Setup (Windows VPS, ~150 MB disk + room for the largest file you fetch, 2 GB max)
 
 1. Install Python 3.10+ from python.org (tick "Add to PATH"), then `pip install telethon cryptg`
 2. Get `API_ID` / `API_HASH` at https://my.telegram.org, `BOT_TOKEN` from @BotFather
-3. Save them once as user env vars:
+3. Create `C:\tgsave\.env` (`notepad .env` in that folder) with:
    ```
-   setx API_ID 12345
-   setx API_HASH abcdef...
-   setx BOT_TOKEN 123:abc...
+   API_ID=12345
+   API_HASH=abcdef...
+   BOT_TOKEN=123:abc...
+   OWNER=123456789,987654321
    ```
-4. Open a new terminal, run `python bot.py`. First run asks your phone number + login code (+ 2FA password). Done.
+   `OWNER` is the comma-separated list of Telegram account ids allowed to use the bot.
+   Anyone else who messages the bot is told it is private and shown their own id, so that is how people get their id.
+   Leave `OWNER` out to allow only the logged-in account.
+4. `python bot.py`. First run asks your phone number + login code (+ 2FA password). Done.
 
-Only the logged-in account can use the bot; anyone else is ignored.
-
-## Fetch with a second account, send links from your main one
-
-Log the user session in with the second account (it must be a member of the private channels you fetch from).
-Then tell the bot which accounts are allowed to talk to it: each person messages @userinfobot to get their id, and
+## Update
 
 ```
-setx OWNER 123456789,987654321
+git pull
+python bot.py
 ```
+
+Sessions live in `user.session` / `bot.session`; no login prompt again unless you delete `user.session` (that is how you switch the fetching account).
 
 ## Keep it running after reboot
 
 ```
-schtasks /create /tn tgsave /sc onstart /ru %USERNAME% /rp * /tr "cmd /c cd /d C:\path\to\telegram-restricted-downloader && python bot.py >> bot.log 2>&1"
+schtasks /create /tn tgsave /sc onstart /ru %USERNAME% /rp * /tr "cmd /c cd /d C:\tgsave && python bot.py >> bot.log 2>&1"
 ```
 
 ## Test

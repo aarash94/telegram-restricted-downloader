@@ -2,3 +2,4 @@
 *.session-journal
 dl/
 bot.log
+.env

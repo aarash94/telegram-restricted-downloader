@@ -7,6 +7,12 @@ import os, re
 from telethon import TelegramClient, events
 from telethon.tl.types import MessageMediaWebPage
 
+if os.path.exists(".env"):  # KEY=VALUE lines next to bot.py; simpler than setx on Windows
+    for line in open(".env", encoding="utf-8-sig"):
+        k, _, v = line.strip().partition("=")
+        if k and not k.startswith("#"):
+            os.environ[k.strip()] = v.strip()
+
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
