@@ -8,10 +8,11 @@ One Python file, ~130 lines, no database, no web server, no ffmpeg.
 
 ## Why another "save restricted content" bot
 
-- **Handles Telegram's new block-based posts.** Since 2026 some channels publish posts built from page blocks (the Instant View format). The classic text and media fields are empty on those, and every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
-- **Keeps media as media.** Videos stay streamable videos with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
-- **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
-- **Nothing to host but the script.** No MongoDB, no Flask keep-alive, no Docker. Works on Windows, Linux and macOS.
+- 🧱 **Reads Telegram's new rich posts.** Since 2026 some channels publish block-based posts (the Instant View format). Their classic text and media fields are empty, so every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
+- 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
+- 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
+- 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
+- 🪶 **Nothing to host but the script.** One file, no MongoDB, no Flask keep-alive, no Docker, no ffmpeg. Works on Windows, Linux and macOS.
 
 ## How it works
 
