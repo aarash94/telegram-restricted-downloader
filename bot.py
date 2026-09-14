@@ -61,6 +61,10 @@ async def main():
             msg = await user.get_messages(chat, ids=mid)
             if msg is None:
                 return await ev.reply(NOT_FOUND)
+            if not msg.media and not msg.message:  # by-id fetch came back hollow: retry through history
+                alt = await user.get_messages(chat, min_id=mid - 1, max_id=mid + 1)
+                if alt and alt[0].id == mid:
+                    msg = alt[0]
             media = msg.media
             if isinstance(media, MessageMediaWebPage):  # link preview: media only when the post has no text
                 wp = media.webpage
@@ -69,7 +73,9 @@ async def main():
                 info = f"{type(msg).__name__}/{type(msg.media).__name__}"
                 if isinstance(msg.media, MessageMediaWebPage):
                     info += f"/{type(msg.media.webpage).__name__}"
-                await ev.reply(msg.message or f"{EMPTY} {info} g={msg.grouped_id}", formatting_entities=msg.entities)
+                if not msg.message:
+                    return await ev.reply(f"{EMPTY} {info}\n\n{msg.stringify()[:3000]}")
+                await ev.reply(msg.message, formatting_entities=msg.entities)
             else:
                 note = await ev.reply(DOWNLOADING)
                 path = await user.download_media(msg, "dl/")
