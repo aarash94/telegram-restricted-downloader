@@ -17,6 +17,15 @@ Your own account does the fetching, so it must already be a member of private ch
 
 Only the logged-in account can use the bot; anyone else is ignored.
 
+## Fetch with a second account, send links from your main one
+
+Log the user session in with the second account (it must be a member of the private channels you fetch from).
+Then tell the bot which account is allowed to talk to it: message @userinfobot from your main account to get your id, and
+
+```
+setx OWNER 123456789
+```
+
 ## Keep it running after reboot
 
 ```

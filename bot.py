@@ -10,6 +10,16 @@ from telethon.tl.types import MessageMediaWebPage
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+OWNER = int(os.environ.get("OWNER", 0))  # your main account id; empty = the logged-in account
+
+WELCOME = "سلام! 👋\nلینک پیام تلگرام را اینجا بفرستید تا همان پیام را برایتان بفرستم.\nحتی از کانال‌هایی که ذخیره و فوروارد در آن‌ها بسته است."
+BAD_LINK = "لینک معتبر نیست. یک لینک پیام تلگرام بفرستید، مثلاً:\nhttps://t.me/channel/123"
+NOT_FOUND = "پیام پیدا نشد. آیا اکانت عضو آن چت است؟"
+DOWNLOADING = "در حال دانلود… ⏳"
+UNSUPPORTED = "این نوع پیام پشتیبانی نمی‌شود (نظرسنجی، موقعیت مکانی، مخاطب و…)."
+EMPTY = "(پیام خالی)"
+NEXT = "انجام شد ✅\nلینک پیام بعدی را بفرستید."
+ERROR = "خطا ❌"
 
 # t.me/c/<chat>/<id>, t.me/c/<chat>/<topic>/<id>, t.me/<user>/<id>, t.me/b/<bot>/<id>, trailing ?single ok
 LINK = re.compile(r"t\.me/(c/|b/)?(\w+)(?:/\d+)?/(\d+)")
@@ -29,27 +39,32 @@ async def main():
     me = await user.get_me()
     os.makedirs("dl", exist_ok=True)
 
-    @bot.on(events.NewMessage(from_users=me.id, func=lambda e: parse(e.raw_text)))
+    @bot.on(events.NewMessage(from_users=OWNER or me.id))
     async def save(ev):
-        chat, mid = parse(ev.raw_text)
+        link = parse(ev.raw_text)
+        if not link:
+            return await ev.respond(WELCOME if ev.raw_text.startswith("/start") else BAD_LINK)
+        chat, mid = link
         try:
             msg = await user.get_messages(chat, ids=mid)
             if msg is None:
-                return await ev.reply("Not found. Is your account a member of that chat?")
+                return await ev.reply(NOT_FOUND)
             if not msg.media or isinstance(msg.media, MessageMediaWebPage):
-                return await ev.reply(msg.message or "(empty message)", formatting_entities=msg.entities)
-            note = await ev.reply("Downloading…")
-            path = await user.download_media(msg, "dl/")
-            if not path:
-                return await note.edit("Unsupported media type (poll, location, contact…)")
-            try:
-                await bot.send_file(ev.chat_id, path, caption=msg.message, formatting_entities=msg.entities,
-                                    attributes=msg.document.attributes if msg.document else None)
-            finally:
-                os.remove(path)
-                await note.delete()
-        except Exception as e:  # ponytail: surface every failure to the owner instead of only the log
-            await ev.reply(f"Error: {type(e).__name__}: {e}")
+                await ev.reply(msg.message or EMPTY, formatting_entities=msg.entities)
+            else:
+                note = await ev.reply(DOWNLOADING)
+                path = await user.download_media(msg, "dl/")
+                if not path:
+                    return await note.edit(UNSUPPORTED)
+                try:
+                    await bot.send_file(ev.chat_id, path, caption=msg.message, formatting_entities=msg.entities,
+                                        attributes=msg.document.attributes if msg.document else None)
+                finally:
+                    os.remove(path)
+                    await note.delete()
+            await ev.respond(NEXT)
+        except Exception as e:  # surface every failure to the owner instead of only the log
+            await ev.reply(f"{ERROR}\n{type(e).__name__}: {e}")
 
     print("bot running as", me.first_name)
     await bot.run_until_disconnected()
