@@ -66,7 +66,10 @@ async def main():
                 wp = media.webpage
                 media = None if msg.message else (getattr(wp, "document", None) or getattr(wp, "photo", None))
             if not media:
-                await ev.reply(msg.message or EMPTY, formatting_entities=msg.entities)
+                info = f"{type(msg).__name__}/{type(msg.media).__name__}"
+                if isinstance(msg.media, MessageMediaWebPage):
+                    info += f"/{type(msg.media.webpage).__name__}"
+                await ev.reply(msg.message or f"{EMPTY} {info} g={msg.grouped_id}", formatting_entities=msg.entities)
             else:
                 note = await ev.reply(DOWNLOADING)
                 path = await user.download_media(msg, "dl/")
