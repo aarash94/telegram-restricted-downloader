@@ -4,6 +4,8 @@ Send a Telegram bot a `t.me/...` message link and get the message back, even fro
 
 One Python file, ~130 lines, no database, no web server, no ffmpeg.
 
+![demo: paste a link, get the post back](docs/demo.gif)
+
 ## Why another "save restricted content" bot
 
 - **Handles Telegram's new block-based posts.** Since 2026 some channels publish posts built from page blocks (the Instant View format). The classic text and media fields are empty on those, and every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
