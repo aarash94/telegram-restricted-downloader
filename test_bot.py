@@ -21,4 +21,11 @@ out, ids = [], []
 rich_walk(rm, out, ids)
 assert ids == [7], ids
 assert "".join(out).split() == ["cap", "a", "b", "x", "y"], out
+
+import glob, json, os
+en = json.load(open("i18n/en.json", encoding="utf-8"))
+for f in glob.glob("i18n/*.json"):
+    d = json.load(open(f, encoding="utf-8"))
+    assert d.keys() == en.keys(), f"{f}: keys differ from en.json"
+    assert "{}" in d["private"], f"{f}: private must contain {{}}"
 print("ok")

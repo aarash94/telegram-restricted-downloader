@@ -61,9 +61,9 @@ git pull
 
 then restart the process. Sessions and `.env` are untouched.
 
-## Bot messages
+## Language
 
-The replies are in Persian. They are the constants at the top of `bot.py`; edit them for another language.
+Replies are English by default. Set `BOT_LANG=fa` in `.env` for Persian. To add a language, copy `i18n/en.json` to `i18n/xx.json`, translate the values, and set `BOT_LANG=xx`. Pull requests with new languages are welcome.
 
 ## When something is not supported
 

@@ -1,0 +1,11 @@
+{
+  "welcome": "Hi! 👋\nSend me a Telegram message link and I will send that message back to you.\nWorks even for channels where saving and forwarding are disabled.",
+  "bad_link": "That is not a valid link. Send a Telegram message link, for example:\nhttps://t.me/channel/123",
+  "not_found": "Message not found. Is the account a member of that chat?",
+  "downloading": "Downloading… ⏳",
+  "unsupported": "This message type is not supported (poll, location, contact, …).",
+  "empty": "(empty message)",
+  "next": "Done ✅\nSend the next message link.",
+  "error": "Error ❌",
+  "private": "This bot is private.\nYour id: {}"
+}
