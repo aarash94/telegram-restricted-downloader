@@ -32,6 +32,23 @@ PRIVATE = "این ربات خصوصی است.\nشناسه شما: {}"
 LINK = re.compile(r"t\.me/(c/|b/)?(\w+)(?:/\d+)?/(\d+)")
 
 
+def rich_walk(node, out, media):
+    """Flatten a Telegram rich message (page blocks) into text lines + media ids, in order."""
+    n = type(node).__name__
+    if n == "TextPlain":
+        return out.append(node.text)
+    for attr in ("photo_id", "video_id", "audio_id", "document_id"):
+        if hasattr(node, attr):
+            media.append(getattr(node, attr))
+    for attr in ("text", "texts", "items", "blocks", "cover", "caption"):
+        v = getattr(node, attr, None)
+        for x in (v if isinstance(v, list) else [v]):
+            if x is not None and not isinstance(x, str):
+                rich_walk(x, out, media)
+    if n.startswith(("PageBlock", "PageListItem", "PageListOrderedItem")):
+        out.append("\n")
+
+
 def parse(text):
     m = LINK.search(text or "")
     if not m:
@@ -61,10 +78,21 @@ async def main():
             msg = await user.get_messages(chat, ids=mid)
             if msg is None:
                 return await ev.reply(NOT_FOUND)
-            if not msg.media and not msg.message:  # by-id fetch came back hollow: retry through history
-                alt = await user.get_messages(chat, min_id=mid - 1, max_id=mid + 1)
-                if alt and alt[0].id == mid:
-                    msg = alt[0]
+            rm = getattr(msg, "rich_message", None)
+            if rm and not msg.media and not msg.message:  # new block-based post format
+                out, ids = [], []
+                rich_walk(rm, out, ids)
+                text = re.sub(r"\n{3,}", "\n\n", "".join(out)).strip()
+                files = {m.id: m for m in rm.photos + rm.documents}
+                for i in ids:
+                    if i in files and (path := await user.download_media(files[i], "dl/")):
+                        try:
+                            await bot.send_file(ev.chat_id, path, attributes=getattr(files[i], "attributes", None))
+                        finally:
+                            os.remove(path)
+                for i in range(0, len(text), 4000):
+                    await ev.reply(text[i:i + 4000])
+                return await ev.respond(NEXT)
             media = msg.media
             if isinstance(media, MessageMediaWebPage):  # link preview: media only when the post has no text
                 wp = media.webpage
