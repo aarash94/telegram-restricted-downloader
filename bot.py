@@ -5,7 +5,7 @@ First run asks for your phone + login code once, then sessions are saved to *.se
 """
 import os, re
 from telethon import TelegramClient, events
-from telethon.tl.types import MessageMediaWebPage
+from telethon.tl.types import Document, MessageMediaWebPage
 
 if os.path.exists(".env"):  # KEY=VALUE lines next to bot.py; simpler than setx on Windows
     for line in open(".env", encoding="utf-8-sig"):
@@ -61,7 +61,11 @@ async def main():
             msg = await user.get_messages(chat, ids=mid)
             if msg is None:
                 return await ev.reply(NOT_FOUND)
-            if not msg.media or isinstance(msg.media, MessageMediaWebPage):
+            media = msg.media
+            if isinstance(media, MessageMediaWebPage):  # link preview: media only when the post has no text
+                wp = media.webpage
+                media = None if msg.message else (getattr(wp, "document", None) or getattr(wp, "photo", None))
+            if not media:
                 await ev.reply(msg.message or EMPTY, formatting_entities=msg.entities)
             else:
                 note = await ev.reply(DOWNLOADING)
@@ -69,8 +73,9 @@ async def main():
                 if not path:
                     return await note.edit(UNSUPPORTED)
                 try:
+                    doc = msg.document or (media if isinstance(media, Document) else None)
                     await bot.send_file(ev.chat_id, path, caption=msg.message, formatting_entities=msg.entities,
-                                        attributes=msg.document.attributes if msg.document else None)
+                                        attributes=doc.attributes if doc else None)
                 finally:
                     os.remove(path)
                     await note.delete()
