@@ -20,6 +20,7 @@ UNSUPPORTED = "این نوع پیام پشتیبانی نمی‌شود (نظرس
 EMPTY = "(پیام خالی)"
 NEXT = "انجام شد ✅\nلینک پیام بعدی را بفرستید."
 ERROR = "خطا ❌"
+PRIVATE = "این ربات خصوصی است.\nشناسه شما: {}"
 
 # t.me/c/<chat>/<id>, t.me/c/<chat>/<topic>/<id>, t.me/<user>/<id>, t.me/b/<bot>/<id>, trailing ?single ok
 LINK = re.compile(r"t\.me/(c/|b/)?(\w+)(?:/\d+)?/(\d+)")
@@ -38,8 +39,13 @@ async def main():
     bot = await TelegramClient("bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
     me = await user.get_me()
     os.makedirs("dl", exist_ok=True)
+    allowed = OWNERS or [me.id]
 
-    @bot.on(events.NewMessage(from_users=OWNERS or me.id))
+    @bot.on(events.NewMessage(func=lambda e: e.is_private and e.sender_id not in allowed))
+    async def deny(ev):
+        await ev.respond(PRIVATE.format(ev.sender_id))
+
+    @bot.on(events.NewMessage(from_users=allowed))
     async def save(ev):
         link = parse(ev.raw_text)
         if not link:
@@ -66,7 +72,7 @@ async def main():
         except Exception as e:  # surface every failure to the owner instead of only the log
             await ev.reply(f"{ERROR}\n{type(e).__name__}: {e}")
 
-    print("bot running as", me.first_name)
+    print("bot running as", me.first_name, "| allowed ids:", allowed)
     await bot.run_until_disconnected()
 
 
