@@ -10,7 +10,7 @@ from telethon.tl.types import MessageMediaWebPage
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-OWNER = int(os.environ.get("OWNER", 0))  # your main account id; empty = the logged-in account
+OWNERS = [int(x) for x in os.environ.get("OWNER", "").split(",") if x.strip()]  # allowed account ids; empty = the logged-in account
 
 WELCOME = "سلام! 👋\nلینک پیام تلگرام را اینجا بفرستید تا همان پیام را برایتان بفرستم.\nحتی از کانال‌هایی که ذخیره و فوروارد در آن‌ها بسته است."
 BAD_LINK = "لینک معتبر نیست. یک لینک پیام تلگرام بفرستید، مثلاً:\nhttps://t.me/channel/123"
@@ -39,7 +39,7 @@ async def main():
     me = await user.get_me()
     os.makedirs("dl", exist_ok=True)
 
-    @bot.on(events.NewMessage(from_users=OWNER or me.id))
+    @bot.on(events.NewMessage(from_users=OWNERS or me.id))
     async def save(ev):
         link = parse(ev.raw_text)
         if not link:
