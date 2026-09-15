@@ -104,8 +104,12 @@ async def main():
                     return await note.edit(T['unsupported'])
                 try:
                     doc = msg.document or (media if isinstance(media, Document) else None)
-                    await bot.send_file(ev.chat_id, path, caption=msg.message, formatting_entities=msg.entities,
+                    fits = len(msg.message or "") <= 1024  # bot caption limit; Premium posts can carry 2048
+                    await bot.send_file(ev.chat_id, path, caption=msg.message if fits else None,
+                                        formatting_entities=msg.entities if fits else None,
                                         attributes=doc.attributes if doc else None)
+                    if not fits:
+                        await ev.reply(msg.message, formatting_entities=msg.entities)
                 finally:
                     os.remove(path)
                     await note.delete()
