@@ -38,8 +38,9 @@ assert ig_parse("https://t.me/cats/7") is None
 if os.environ.get("IG_TEST"):  # IG_TEST=<shortcode> hits Instagram for real; off by default
     import shutil
     from bot import ig_download
-    folder = ig_download(os.environ["IG_TEST"])
+    folder, caption = ig_download(os.environ["IG_TEST"])
     files = os.listdir(folder)
     assert files and all(f.endswith((".jpg", ".mp4")) for f in files), files
+    assert isinstance(caption, str) and caption, caption  # every test post above has one
     shutil.rmtree(folder)
 print("ok")

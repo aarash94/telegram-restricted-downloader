@@ -63,14 +63,15 @@ def ig_parse(text):
 
 
 def ig_download(code):
-    """Blocking: download every photo/video of an Instagram post into dl/<code>/ and return that folder."""
-    IG_LOADER.download_post(instaloader.Post.from_shortcode(IG_LOADER.context, code), target=code)
+    """Blocking: download every photo/video of an Instagram post into dl/<code>/; return (folder, caption)."""
+    post = instaloader.Post.from_shortcode(IG_LOADER.context, code)
+    IG_LOADER.download_post(post, target=code)
     folder = os.path.join("dl", code)
     for f in os.listdir(folder):  # Instagram serves newer pictures as webp, which Telegram shows as a sticker/file
         if f.endswith(".webp"):
             Image.open(os.path.join(folder, f)).convert("RGB").save(os.path.join(folder, f[:-5] + ".jpg"), quality=95)
             os.remove(os.path.join(folder, f))
-    return folder
+    return folder, post.caption or ""
 
 
 async def main():
@@ -92,11 +93,15 @@ async def main():
         try:
             if code:  # Instagram: all photos/videos of the post as one album (Telethon splits past 10)
                 note = await ev.reply(T['downloading'])
-                folder = await asyncio.to_thread(ig_download, code)
+                folder, caption = await asyncio.to_thread(ig_download, code)
                 try:
                     # instaloader names carousel items _1.._N; sort by length first so _10 comes after _9
                     files = [os.path.join(folder, f) for f in sorted(os.listdir(folder), key=lambda f: (len(f), f))]
-                    await bot.send_file(ev.chat_id, files, supports_streaming=True)
+                    fits = len(caption) <= 1024  # bot caption limit; parse_mode=None keeps #hash_tags and *stars* literal
+                    await bot.send_file(ev.chat_id, files, caption=caption if fits else None, parse_mode=None,
+                                        supports_streaming=True)
+                    if not fits:
+                        await ev.reply(caption, parse_mode=None)
                 finally:
                     shutil.rmtree(folder)
                     await note.delete()
