@@ -1,5 +1,5 @@
 telethon>=1.45
-cryptg
-instaloader>=4.15
-hachoir
-pillow
+cryptg             # faster MTProto crypto
+instaloader>=4.15  # Instagram posts and reels
+pillow             # converts Instagram's webp pictures to jpg so Telegram shows them as photos
+hachoir            # lets Telethon read video dimensions/duration so reels arrive as streamable videos

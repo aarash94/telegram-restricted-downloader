@@ -1,6 +1,6 @@
 # telegram-restricted-downloader
 
-Send a Telegram bot a `t.me/...` message link and get the message back, even from channels and groups that block saving and forwarding. Send it an Instagram post or reel link and get every photo and video in it.
+Paste a link into a Telegram bot, get the post back. Works for Telegram messages, including channels and groups that block saving and forwarding, and for Instagram posts and reels.
 
 One Python file, ~160 lines, no database, no web server, no ffmpeg.
 
@@ -9,17 +9,17 @@ One Python file, ~160 lines, no database, no web server, no ffmpeg.
 ## Why another "save restricted content" bot
 
 - 🧱 **Reads Telegram's new rich posts.** Since 2026 some channels publish block-based posts (the Instant View format). Their classic text and media fields are empty, so every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
+- 📸 **Instagram too.** Paste a post or reel link and every photo and video in it arrives as one album, caption included. No Instagram account needed for public posts.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
-- 📸 **Instagram too.** Paste a post or reel link and the bot sends its photos and videos as one album. No Instagram login needed for public posts.
 - 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
 - 🪶 **Nothing to host but the script.** One file, no MongoDB, no Flask keep-alive, no Docker, no ffmpeg. Works on Windows, Linux and macOS.
 
 ## How it works
 
-Two Telethon clients run in one process. Your own account (a user session) fetches the message and, if needed, downloads the media. The bot re-sends it to you. Bots cannot read arbitrary chats or copy out of protected ones, which is why the user session is required.
+Two Telethon clients run in one process. Your own account (a user session) fetches the Telegram message and, if needed, downloads the media. The bot re-sends it to you. Bots cannot read arbitrary chats or copy out of protected ones, which is why the user session is required. For private chats the fetching account must already be a member.
 
-For private chats the fetching account must already be a member.
+Instagram posts are fetched anonymously with instaloader, so no Instagram login is involved.
 
 ## Setup
 
@@ -32,16 +32,16 @@ For private chats the fetching account must already be a member.
 ## Supported links
 
 ```
-https://t.me/channel/123           public channel or group
-https://t.me/c/1234567890/123      private channel or group
-https://t.me/c/1234567890/5/123    topic link
-https://t.me/b/botname/123         a chat with a bot
-https://t.me/channel/123?single    single item of an album
-https://www.instagram.com/p/CODE/       Instagram post (all photos and videos)
-https://www.instagram.com/reel/CODE/    Instagram reel
+https://t.me/channel/123                 public channel or group
+https://t.me/c/1234567890/123            private channel or group
+https://t.me/c/1234567890/5/123          topic link
+https://t.me/b/botname/123               a chat with a bot
+https://t.me/channel/123?single          single item of an album
+https://www.instagram.com/p/CODE/        Instagram post, all photos and videos
+https://www.instagram.com/reel/CODE/     Instagram reel
 ```
 
-Instagram stories, highlights and private accounts are not supported. Instagram rate-limits anonymous downloads, so leave a minute between links.
+Instagram stories, highlights and private accounts are not supported. Instagram rate-limits anonymous downloads and may block a server's address for a while after too many requests, so leave a minute between links and wait if it starts failing.
 
 ## Access control
 
@@ -65,9 +65,10 @@ schtasks /create /tn tgsave /sc onstart /ru %USERNAME% /rp * /tr "cmd /c cd /d C
 
 ```
 git pull
+pip install -r requirements.txt
 ```
 
-then restart the process. Sessions and `.env` are untouched. Run `pip install -r requirements.txt` again if requirements changed.
+then restart the process. Sessions and `.env` are untouched.
 
 ## Language
 
@@ -75,7 +76,7 @@ Replies are English by default. Set `BOT_LANG=fa` in `.env` for Persian. To add 
 
 ## When something is not supported
 
-If a post type the bot does not understand comes back, it replies with a dump of the raw message. Open an issue with that dump and the link type.
+If a Telegram post type the bot does not understand comes back, it replies with a dump of the raw message. Open an issue with that dump and the link type.
 
 ## Test
 
@@ -87,6 +88,6 @@ python test_bot.py
 
 ## Notes
 
-Use your own API credentials and your own account. Respect the wishes of content owners and Telegram's terms. This tool exists for personal archiving of content you already have access to.
+Use your own API credentials and your own account. Respect the wishes of content owners and the terms of Telegram and Instagram. This tool exists for personal archiving of content you already have access to.
 
 MIT license.

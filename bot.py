@@ -93,8 +93,9 @@ async def main():
         try:
             if code:  # Instagram: all photos/videos of the post as one album (Telethon splits past 10)
                 note = await ev.reply(T['downloading'])
-                folder, caption = await asyncio.to_thread(ig_download, code)
+                folder = os.path.join("dl", code)
                 try:
+                    _, caption = await asyncio.to_thread(ig_download, code)
                     # instaloader names carousel items _1.._N; sort by length first so _10 comes after _9
                     files = [os.path.join(folder, f) for f in sorted(os.listdir(folder), key=lambda f: (len(f), f))]
                     fits = len(caption) <= 1024  # bot caption limit; parse_mode=None keeps #hash_tags and *stars* literal
@@ -103,7 +104,7 @@ async def main():
                     if not fits:
                         await ev.reply(caption, parse_mode=None)
                 finally:
-                    shutil.rmtree(folder)
+                    shutil.rmtree(folder, ignore_errors=True)  # also clears a half-finished download
                     await note.delete()
                 return await ev.respond(T['next'])
             chat, mid = link
