@@ -1,8 +1,8 @@
 # telegram-restricted-downloader
 
-Send a Telegram bot a `t.me/...` message link and get the message back, even from channels and groups that block saving and forwarding.
+Send a Telegram bot a `t.me/...` message link and get the message back, even from channels and groups that block saving and forwarding. Send it an Instagram post or reel link and get every photo and video in it.
 
-One Python file, ~130 lines, no database, no web server, no ffmpeg.
+One Python file, ~160 lines, no database, no web server, no ffmpeg.
 
 ![demo: paste a link, get the post back](docs/demo.gif)
 
@@ -11,6 +11,7 @@ One Python file, ~130 lines, no database, no web server, no ffmpeg.
 - 🧱 **Reads Telegram's new rich posts.** Since 2026 some channels publish block-based posts (the Instant View format). Their classic text and media fields are empty, so every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
+- 📸 **Instagram too.** Paste a post or reel link and the bot sends its photos and videos as one album. No Instagram login needed for public posts.
 - 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
 - 🪶 **Nothing to host but the script.** One file, no MongoDB, no Flask keep-alive, no Docker, no ffmpeg. Works on Windows, Linux and macOS.
 
@@ -36,7 +37,11 @@ https://t.me/c/1234567890/123      private channel or group
 https://t.me/c/1234567890/5/123    topic link
 https://t.me/b/botname/123         a chat with a bot
 https://t.me/channel/123?single    single item of an album
+https://www.instagram.com/p/CODE/       Instagram post (all photos and videos)
+https://www.instagram.com/reel/CODE/    Instagram reel
 ```
+
+Instagram stories, highlights and private accounts are not supported. Instagram rate-limits anonymous downloads, so leave a minute between links.
 
 ## Access control
 
@@ -62,7 +67,7 @@ schtasks /create /tn tgsave /sc onstart /ru %USERNAME% /rp * /tr "cmd /c cd /d C
 git pull
 ```
 
-then restart the process. Sessions and `.env` are untouched.
+then restart the process. Sessions and `.env` are untouched. Run `pip install -r requirements.txt` again if requirements changed.
 
 ## Language
 
@@ -77,6 +82,8 @@ If a post type the bot does not understand comes back, it replies with a dump of
 ```
 python test_bot.py
 ```
+
+`IG_TEST=<shortcode> python test_bot.py` additionally downloads that Instagram post for real.
 
 ## Notes
 

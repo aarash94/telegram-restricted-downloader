@@ -1,9 +1,12 @@
 """Personal Telegram bot: send it a t.me link, get the message back (restricted or not).
+Send it an Instagram post or reel link, get every photo and video in it.
 
 Your own account (user session) fetches + downloads; the bot re-sends to you.
 First run asks for your phone + login code once, then sessions are saved to *.session files.
 """
-import json, os, re
+import asyncio, json, os, re, shutil
+import instaloader
+from PIL import Image
 from telethon import TelegramClient, events
 from telethon.tl.types import Document, MessageMediaWebPage
 
@@ -23,6 +26,10 @@ T = json.load(open(os.path.join(HERE, "i18n", f"{BOT_LANG}.json"), encoding="utf
 
 # t.me/c/<chat>/<id>, t.me/c/<chat>/<topic>/<id>, t.me/<user>/<id>, t.me/b/<bot>/<id>, trailing ?single ok
 LINK = re.compile(r"t\.me/(c/|b/)?(\w+)(?:/\d+)?/(\d+)")
+# instagram.com/p/<code>, /reel/<code>, /reels/<code>, /tv/<code>, optionally under /<username>/; ?igsh=... ok
+IG = re.compile(r"instagram\.com/(?:[\w.]+/)?(?:p|reels?|tv)/([\w-]+)")
+IG_LOADER = instaloader.Instaloader(dirname_pattern="dl/{target}", save_metadata=False, download_video_thumbnails=False,
+                                    post_metadata_txt_pattern="", quiet=True)  # media files only, nothing else
 
 
 def rich_walk(node, out, media):
@@ -50,6 +57,22 @@ def parse(text):
     return (int("-100" + chat) if kind == "c/" else chat), int(mid)
 
 
+def ig_parse(text):
+    m = IG.search(text or "")
+    return m and m.group(1)
+
+
+def ig_download(code):
+    """Blocking: download every photo/video of an Instagram post into dl/<code>/ and return that folder."""
+    IG_LOADER.download_post(instaloader.Post.from_shortcode(IG_LOADER.context, code), target=code)
+    folder = os.path.join("dl", code)
+    for f in os.listdir(folder):  # Instagram serves newer pictures as webp, which Telegram shows as a sticker/file
+        if f.endswith(".webp"):
+            Image.open(os.path.join(folder, f)).convert("RGB").save(os.path.join(folder, f[:-5] + ".jpg"), quality=95)
+            os.remove(os.path.join(folder, f))
+    return folder
+
+
 async def main():
     user = await TelegramClient("user", API_ID, API_HASH).start()
     bot = await TelegramClient("bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -63,11 +86,22 @@ async def main():
 
     @bot.on(events.NewMessage(from_users=allowed))
     async def save(ev):
-        link = parse(ev.raw_text)
-        if not link:
+        link, code = parse(ev.raw_text), ig_parse(ev.raw_text)
+        if not link and not code:
             return await ev.respond(T['welcome'] if ev.raw_text.startswith("/start") else T['bad_link'])
-        chat, mid = link
         try:
+            if code:  # Instagram: all photos/videos of the post as one album (Telethon splits past 10)
+                note = await ev.reply(T['downloading'])
+                folder = await asyncio.to_thread(ig_download, code)
+                try:
+                    # instaloader names carousel items _1.._N; sort by length first so _10 comes after _9
+                    files = [os.path.join(folder, f) for f in sorted(os.listdir(folder), key=lambda f: (len(f), f))]
+                    await bot.send_file(ev.chat_id, files, supports_streaming=True)
+                finally:
+                    shutil.rmtree(folder)
+                    await note.delete()
+                return await ev.respond(T['next'])
+            chat, mid = link
             msg = await user.get_messages(chat, ids=mid)
             if msg is None:
                 return await ev.reply(T['not_found'])
@@ -122,5 +156,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())

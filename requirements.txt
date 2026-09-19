@@ -1,2 +1,5 @@
 telethon>=1.45
 cryptg
+instaloader>=4.15
+hachoir
+pillow

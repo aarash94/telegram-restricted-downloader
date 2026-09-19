@@ -28,4 +28,18 @@ for f in glob.glob("i18n/*.json"):
     d = json.load(open(f, encoding="utf-8"))
     assert d.keys() == en.keys(), f"{f}: keys differ from en.json"
     assert "{}" in d["private"], f"{f}: private must contain {{}}"
+from bot import ig_parse
+assert ig_parse("https://www.instagram.com/p/C1a2B3c4D5e/") == "C1a2B3c4D5e"
+assert ig_parse("https://www.instagram.com/reel/C1a2B3c4D5e/?igsh=abc") == "C1a2B3c4D5e"
+assert ig_parse("instagram.com/reels/C1a2B3c4D5e") == "C1a2B3c4D5e"
+assert ig_parse("https://www.instagram.com/someuser/p/C1a2B3c4D5e/") == "C1a2B3c4D5e"
+assert ig_parse("https://www.instagram.com/stories/someuser/123/") is None
+assert ig_parse("https://t.me/cats/7") is None
+if os.environ.get("IG_TEST"):  # IG_TEST=<shortcode> hits Instagram for real; off by default
+    import shutil
+    from bot import ig_download
+    folder = ig_download(os.environ["IG_TEST"])
+    files = os.listdir(folder)
+    assert files and all(f.endswith((".jpg", ".mp4")) for f in files), files
+    shutil.rmtree(folder)
 print("ok")
