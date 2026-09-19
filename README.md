@@ -1,6 +1,6 @@
 # telegram-restricted-downloader
 
-Paste a link into a Telegram bot, get the post back. Works for Telegram messages, including channels and groups that block saving and forwarding, and for Instagram posts and reels.
+**Instagram downloader and Telegram restricted-content saver, as a Telegram bot.** Paste a link, get the post back: Telegram messages, including channels and groups that block saving and forwarding, and Instagram posts and reels.
 
 One Python file, ~160 lines, no database, no web server, no ffmpeg.
 
