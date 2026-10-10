@@ -12,6 +12,11 @@ from PIL import Image
 from telethon import Button, TelegramClient, events
 from telethon.tl.types import Document, MessageMediaWebPage
 
+try:
+    import imageio_ffmpeg  # ships an ffmpeg binary in site-packages, so hosts need no separate ffmpeg install
+except ImportError:
+    imageio_ffmpeg = None
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 if os.path.exists(os.path.join(HERE, ".env")):  # KEY=VALUE lines next to bot.py; simpler than setx on Windows
     for line in open(os.path.join(HERE, ".env"), encoding="utf-8-sig"):
@@ -145,11 +150,23 @@ def yt_info(vid):
         return y.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
 
 
+def yt_opts():
+    """ffmpeg is what merges the two streams into one mp4 and builds the mp3, so yt-dlp must find it.
+
+    An ffmpeg on PATH wins; otherwise use the binary imageio-ffmpeg installed into site-packages.
+    """
+    if shutil.which("ffmpeg"):
+        return {}
+    if imageio_ffmpeg:
+        return {"ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe()}  # the bundled file has a version in its name
+    raise RuntimeError("ffmpeg is missing. Install it on PATH, or run: pip install imageio-ffmpeg")
+
+
 def yt_download(vid, choice, folder):
     """Blocking: download one already-chosen format into folder/ and return the resulting file path."""
     _, fmt, post, _ = choice
     opts = {"quiet": True, "no_warnings": True, "noprogress": True, "noplaylist": True, "format": fmt,
-            "outtmpl": os.path.join(folder, "%(id)s.%(ext)s"), "merge_output_format": "mp4"}
+            "outtmpl": os.path.join(folder, "%(id)s.%(ext)s"), "merge_output_format": "mp4", **yt_opts()}
     if post:
         opts["postprocessors"] = post
     with yt_dlp.YoutubeDL(opts) as y:

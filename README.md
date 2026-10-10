@@ -14,7 +14,7 @@ One Python file, ~290 lines, no database, no web server.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
 - 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
-- 🪶 **Nothing to host but the script.** One file, no MongoDB, no Flask keep-alive, no Docker. Works on Windows, Linux and macOS.
+- 🪶 **Nothing to host but the script.** One file, no MongoDB, no Flask keep-alive, no Docker, and no separate ffmpeg to install. Works on Windows, Linux and macOS.
 
 ## How it works
 
@@ -27,7 +27,7 @@ YouTube links are read with yt-dlp, which does not need a login either. Because 
 ## Setup
 
 1. Python 3.10 or newer, then `pip install -r requirements.txt`
-2. Install **ffmpeg** and keep it on `PATH`. Instagram and Telegram need nothing else, but YouTube merges the separate video and audio streams into one `.mp4` and converts audio to `.mp3`, both of which ffmpeg does. On macOS `brew install ffmpeg`, on Debian/Ubuntu `apt install ffmpeg`, on Windows `winget install ffmpeg`.
+2. Nothing else to install. YouTube merges the separate video and audio streams into one `.mp4` and converts audio to `.mp3`, and `requirements.txt` covers that with `imageio-ffmpeg`, which puts an ffmpeg binary inside `site-packages`. An ffmpeg already on `PATH` is used instead when there is one; installing one by hand is optional.
 3. Create an application at https://my.telegram.org to get `API_ID` and `API_HASH`. Create a bot with [@BotFather](https://t.me/BotFather) to get `BOT_TOKEN`.
 4. `cp .env.example .env` and fill in the values.
 5. `python bot.py`. The first run asks for the phone number and login code of the fetching account, plus the two-step password if enabled. The login is saved to `user.session`, so this happens once.
