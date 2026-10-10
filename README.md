@@ -34,6 +34,8 @@ YT_COOKIES=chrome
 
 On Windows, prefer a `cookies.txt` file over a Chromium browser. Windows seals Chromium cookies with DPAPI, which only opens for the same Windows account that owns the browser profile, so a bot started as a service or as another user gets `Failed to decrypt with DPAPI`. A `cookies.txt` needs no decryption at all: install the *Get cookies.txt LOCALLY* extension, open youtube.com, export from the extension, and set the path. Firefox is also unaffected, since it does not use DPAPI.
 
+If a `cookies.txt` gets you *past* the bot check and then fails with *"The page needs to be reloaded"*, that is a known yt-dlp bug, not your cookies ([#16212](https://github.com/yt-dlp/yt-dlp/issues/16212), [#17389](https://github.com/yt-dlp/yt-dlp/issues/17389)): with cookies present yt-dlp asks for a player YouTube is currently refusing. `YT_CLIENTS` in `.env` controls which players are tried and already excludes that one; if a particular video still fails, try `YT_CLIENTS=default,-tv,web_embedded,android_vr`.
+
 ## Setup
 
 1. Python 3.10 or newer, then `pip install -r requirements.txt`

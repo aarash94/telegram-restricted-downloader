@@ -41,6 +41,9 @@ IG_LOADER = instaloader.Instaloader(dirname_pattern="dl/{target}", save_metadata
                                     post_metadata_txt_pattern="", quiet=True)  # media files only, nothing else
 YT_MAX_H = int(os.environ.get("YT_MAX_H", 1080))  # highest video button offered
 YT_AUDIO_KBPS = [int(x) for x in os.environ.get("YT_AUDIO_KBPS", "128,192,320").split(",") if x.strip()]
+# yt-dlp picks tv_downgraded whenever cookies are present, and YouTube currently rejects that client with
+# "The page needs to be reloaded" (yt-dlp#16212, #17389). Naming the working clients sidesteps it.
+YT_CLIENTS = [c.strip() for c in os.environ.get("YT_CLIENTS", "default,-tv_downgraded,web_embedded").split(",") if c.strip()]
 YT_PENDING = {}  # callback token -> (chat_id, video_id, title, choices); one entry per open choice keyboard
 
 
@@ -174,8 +177,10 @@ def yt_cookies():
 
 
 def yt_opts():
-    """Settings shared by both yt-dlp calls: no playlist, no chatter, and the cookies if configured."""
-    return {"quiet": True, "no_warnings": True, "noplaylist": True, **yt_cookies()}
+    """Settings shared by both yt-dlp calls: no playlist, no chatter, the cookies if configured, and the
+    player clients that currently work."""
+    return {"quiet": True, "no_warnings": True, "noplaylist": True,
+            "extractor_args": {"youtube": {"player_client": YT_CLIENTS}}, **yt_cookies()}
 
 
 def yt_error(e):
@@ -185,6 +190,8 @@ def yt_error(e):
         return T['yt_botcheck']
     if "DPAPI" in msg:  # Windows sealed the browser's cookies for a different account than this one runs as
         return T['yt_dpapi']
+    if "needs to be reloaded" in msg:  # yt-dlp's cookie path lands on a player YouTube is refusing
+        return T['yt_stale']
     return f"{type(e).__name__}: {msg[:400]}"
 
 
