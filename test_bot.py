@@ -83,11 +83,19 @@ open("cookies.txt", "w").write("# Netscape HTTP Cookie File\n")
 os.environ["YT_COOKIES"] = "cookies.txt"  # an exported file wins over being read as a browser name
 assert yt_cookies() == {"cookiefile": "cookies.txt"}
 os.remove("cookies.txt")
+# a Windows path that does not exist must be reported, not mistaken for a browser named "C"
+os.environ["YT_COOKIES"] = r"C:\tgsave\cookies.txt"
+try:
+    yt_cookies()
+    raise AssertionError("a bad path should raise")
+except RuntimeError as e:
+    assert "neither a readable file nor one of" in str(e), e
 os.environ.pop("YT_COOKIES", None)
 
 # yt-dlp colours its errors for a terminal; the owner should see plain words and the fix
 assert yt_error(Exception("ERROR: \x1b[0;31m[x] \x1b[0m [youtube] abc: Sign in to confirm you\u2019re not a bot.")) == T['yt_botcheck']
 assert yt_error(ValueError("no such format")) == "ValueError: no such format"
+assert yt_error(Exception("ERROR: Failed to decrypt with DPAPI. See ... for more info")) == T['yt_dpapi']
 if os.environ.get("IG_TEST"):  # IG_TEST=<shortcode> hits Instagram for real; off by default
     import shutil
     from bot import ig_download

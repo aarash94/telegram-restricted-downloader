@@ -150,20 +150,27 @@ def yt_info(vid):
         return y.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
 
 
+YT_BROWSERS = ("brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale")
+
+
 def yt_cookies():
     """YouTube walls off some addresses with "Sign in to confirm you're not a bot". Cookies from a
     browser that is signed in to YouTube are the documented way past it.
 
-    YT_COOKIES is either a path to a cookies.txt file or a browser yt-dlp can read, optionally as
-    firefox:container. Left empty, the bot just tries anonymously.
+    YT_COOKIES is a path to a cookies.txt file, or a browser yt-dlp can read, optionally as
+    firefox:container. A file is the dependable choice on Windows: Chromium cookies are sealed with
+    DPAPI, which only opens for the same Windows account that owns the browser profile.
     """
-    v = os.environ.get("YT_COOKIES", "").strip()
+    v = os.environ.get("YT_COOKIES", "").strip().strip('"')
     if not v:
         return {}
     if os.path.isfile(v):
         return {"cookiefile": v}
     browser, _, profile = v.partition(":")
-    return {"cookiesfrombrowser": (browser.strip(), profile.strip() or None, None, None)}
+    browser = browser.strip().lower()
+    if browser not in YT_BROWSERS:  # a path that does not exist is far likelier than a typo'd browser
+        raise RuntimeError(f"YT_COOKIES: {v!r} is neither a readable file nor one of {', '.join(YT_BROWSERS)}")
+    return {"cookiesfrombrowser": (browser, profile.strip() or None, None, None)}
 
 
 def yt_opts():
@@ -176,6 +183,8 @@ def yt_error(e):
     msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e)).strip()
     if "confirm you" in msg and "bot" in msg:
         return T['yt_botcheck']
+    if "DPAPI" in msg:  # Windows sealed the browser's cookies for a different account than this one runs as
+        return T['yt_dpapi']
     return f"{type(e).__name__}: {msg[:400]}"
 
 

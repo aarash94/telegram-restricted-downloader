@@ -32,6 +32,8 @@ YT_COOKIES=chrome
 
 `edge`, `firefox`, `brave`, `chromium`, `opera`, `safari` and `vivaldi` also work, as does `firefox:container` for a named container, and a path to an exported `cookies.txt`. Leaving it empty is fine as long as YouTube is not challenging you.
 
+On Windows, prefer a `cookies.txt` file over a Chromium browser. Windows seals Chromium cookies with DPAPI, which only opens for the same Windows account that owns the browser profile, so a bot started as a service or as another user gets `Failed to decrypt with DPAPI`. A `cookies.txt` needs no decryption at all: install the *Get cookies.txt LOCALLY* extension, open youtube.com, export from the extension, and set the path. Firefox is also unaffected, since it does not use DPAPI.
+
 ## Setup
 
 1. Python 3.10 or newer, then `pip install -r requirements.txt`
