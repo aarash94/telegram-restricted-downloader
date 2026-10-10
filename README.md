@@ -1,51 +1,31 @@
 # telegram-restricted-downloader
 
-**Instagram, YouTube and Telegram restricted-content downloader, as a Telegram bot.** Paste a link, get the post back: Telegram messages, including channels and groups that block saving and forwarding, Instagram posts and reels, and YouTube videos or audio in the quality you pick.
+**Telegram, Instagram and YouTube downloader, as a Telegram bot.** Paste a link, get it back: Telegram messages including channels and groups that block saving and forwarding, Instagram posts and reels, and YouTube videos or audio in the quality you pick.
 
-One Python file, ~290 lines, no database, no web server.
+One Python file, ~400 lines, no database, no web server.
 
 ![demo: paste a link, get the post back](docs/demo.gif)
 
-## Why another "save restricted content" bot
+## What it does
 
 - 🧱 **Reads Telegram's new rich posts.** Since 2026 some channels publish block-based posts (the Instant View format). Their classic text and media fields are empty, so every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
-- 📸 **Instagram too.** Paste a post or reel link and every photo and video in it arrives as one album, caption included. No Instagram account needed for public posts.
-- ▶️ **YouTube too.** Paste a video link and the bot replies with a button per option, each labelled with quality, file extension and size: `🎬 1080p · mp4 · 80.5 MB` or `🎵 audio · mp3 128kbps · 3.3 MB`. Tap one and the finished file arrives, named after the video.
+- 📸 **Instagram posts and reels.** Every photo and video arrives as one album, caption included. No Instagram account needed for public posts.
+- ▶️ **YouTube, with a menu.** Paste a link and the bot replies with one button per option, each labelled with quality, extension and size. Tap one and the file arrives, named after the video.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
 - 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
 - 🪶 **Nothing to host but the script.** One file, no MongoDB, no Flask keep-alive, no Docker, and no separate ffmpeg to install. Works on Windows, Linux and macOS.
 
-## How it works
-
-Two Telethon clients run in one process. Your own account (a user session) fetches the Telegram message and, if needed, downloads the media. The bot re-sends it to you. Bots cannot read arbitrary chats or copy out of protected ones, which is why the user session is required. For private chats the fetching account must already be a member.
-
-Instagram posts are fetched anonymously with instaloader, so no Instagram login is involved.
-
-YouTube links are read with yt-dlp, which does not need a login. One thing does bite in practice: YouTube regularly challenges addresses that look automated with *"Sign in to confirm you're not a bot"*, and when it does, no format is listed and the menu never appears. It keys on the network address, not on the bot. A home connection usually gets through, and often clears on its own after a while; a shared server or a fresh VPS address is the worst case.
-
-When it happens, sign in to YouTube in a browser on the machine running the bot and point the bot at it:
-
-```
-YT_COOKIES=chrome
-```
-
-`edge`, `firefox`, `brave`, `chromium`, `opera`, `safari` and `vivaldi` also work, as does `firefox:container` for a named container, and a path to an exported `cookies.txt`. Leaving it empty is fine as long as YouTube is not challenging you.
-
-On Windows, prefer a `cookies.txt` file over a Chromium browser. Windows seals Chromium cookies with DPAPI, which only opens for the same Windows account that owns the browser profile, so a bot started as a service or as another user gets `Failed to decrypt with DPAPI`. A `cookies.txt` needs no decryption at all: install the *Get cookies.txt LOCALLY* extension, open youtube.com, export from the extension, and set the path. Firefox is also unaffected, since it does not use DPAPI.
-
-If a `cookies.txt` gets you *past* the bot check and then fails with *"The page needs to be reloaded"*, that is a known yt-dlp bug, not your cookies ([#16212](https://github.com/yt-dlp/yt-dlp/issues/16212), [#17389](https://github.com/yt-dlp/yt-dlp/issues/17389)): with cookies present yt-dlp asks for a player YouTube is currently refusing. `YT_CLIENTS` in `.env` controls which players are tried and already excludes that one; if a particular video still fails, try `YT_CLIENTS=default,-tv,web_embedded,android_vr`.
-
 ## Setup
 
-1. Python 3.10 or newer, then `pip install -r requirements.txt`
-2. Nothing else to install for Telegram or Instagram. YouTube needs two more things:
-   - **ffmpeg** for merging the separate video and audio streams into one `.mp4` and for the `.mp3`. `imageio-ffmpeg` in `requirements.txt` covers this by putting a binary in `site-packages`; an ffmpeg already on `PATH` is used instead when there is one, and installing one by hand is optional.
-   - **A JavaScript runtime** (deno or node). YouTube signs its streams with a challenge, and yt-dlp runs the solver through deno or node. `yt-dlp[default]` in `requirements.txt` also pulls `yt-dlp-ejs`, the challenge-solver scripts themselves; without those the solve fails, every stream loses its URL, and yt-dlp offers only storyboard images — which it reports as *"Requested format is not available"*. deno ships as a single `deno.exe` you can drop anywhere, and if adding it to `PATH` is awkward you can name the file instead with `YT_JS_RUNTIME=C:\deno\deno.exe`.
-3. Create an application at https://my.telegram.org to get `API_ID` and `API_HASH`. Create a bot with [@BotFather](https://t.me/BotFather) to get `BOT_TOKEN`.
+1. **Python 3.10 or newer**, then `pip install -r requirements.txt`. The floor on `yt-dlp` is deliberate: installing it on Python 3.9 fails outright rather than quietly resolving to a build that sees far fewer formats.
+2. **A JavaScript runtime**, only for YouTube: deno or node. YouTube signs its streams with a challenge and yt-dlp runs the solver through one of them. deno is a single `deno.exe` you can drop anywhere. See [YouTube setup](#youtube-setup) if you would rather not touch `PATH`.
+3. Create an application at https://my.telegram.org to get `API_ID` and `API_HASH`, and a bot from [@BotFather](https://t.me/BotFather) to get `BOT_TOKEN`.
 4. `cp .env.example .env` and fill in the values.
 5. `python bot.py`. The first run asks for the phone number and login code of the fetching account, plus the two-step password if enabled. The login is saved to `user.session`, so this happens once.
 6. Open your bot in Telegram, press Start, paste a link.
+
+Telegram and Instagram need nothing beyond the pip install: ffmpeg arrives with it via `imageio-ffmpeg`, which places a binary in `site-packages`. An ffmpeg already on `PATH` is used instead when there is one.
 
 ## Supported links
 
@@ -60,32 +40,102 @@ https://www.instagram.com/reel/CODE/     Instagram reel
 https://www.youtube.com/watch?v=ID        YouTube video, pick quality or audio
 https://youtu.be/ID                       same, short form
 https://www.youtube.com/shorts/ID         same, Shorts
+https://www.youtube.com/live/ID           same, a past live stream
 ```
 
 Instagram stories, highlights and private accounts are not supported. Instagram rate-limits anonymous downloads and may block a server's address for a while after too many requests, so leave a minute between links and wait if it starts failing.
 
-## YouTube options
+Playlists are not supported on YouTube: only the single video in the link is offered.
 
-Paste a link and the bot answers with one button per option, each showing quality, extension and size:
+## YouTube
+
+### The menu
+
+Paste a link and the bot answers with one button per option:
 
 ```
+Rick Astley - Never Gonna Give You Up  ·  3:33
+
 🎬 1080p · mp4 · 80.5 MB
-🎬 720p · mp4 · 28.5 MB
+🎬 720p  · mp4 · 28.5 MB
+🎵 audio · mp3 320kbps · 8.1 MB
+🎵 audio · mp3 192kbps · 4.9 MB
 🎵 audio · mp3 128kbps · 3.3 MB
 ```
 
-Every video option is `.mp4`, made by pairing YouTube's H.264 video stream with its best m4a audio and muxing them, because mp4 is the one container every phone and browser plays. Audio options are the same best audio, re-encoded to mp3. Sizes are real estimates from YouTube's own metadata, so what the button promises is what lands in the chat.
+Every video option is `.mp4`, made by pairing YouTube's H.264 stream with its best m4a audio and muxing them, because mp4 is the one container every phone and browser plays. Audio options are that same best audio re-encoded to mp3.
 
-Two values in `.env` tune the menu:
+The sizes are real figures from YouTube's own metadata rather than an estimate, so what a button promises is what lands in the chat, and the delivered file keeps the name of the video.
 
-- `YT_MAX_H` hides every resolution above the one you set. The default is `1080`; `2160` adds 1440p and 4K.
-- `YT_AUDIO_KBPS` is the list of audio bitrates to offer, default `128,192,320`. Every tier in the list gets a button. A tier above what the video's own audio provides is still encoded at that bitrate, so it plays everywhere but adds no detail over the source; drop the ones you do not want.
+### Settings
 
-Playlists are not supported: only the single video in the link is offered.
+All optional. Defaults work; nothing here needs setting unless YouTube is refusing you.
 
-## Access control
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `YT_MAX_H` | `1080` | Highest resolution offered as a button. `2160` adds 1440p and 4K. |
+| `YT_AUDIO_KBPS` | `128,192,320` | Audio bitrates, one button each. Trim the list to taste. |
+| `YT_COOKIES` | *(empty)* | Cookies for YouTube's bot check. A browser name, or a path to `cookies.txt`. |
+| `YT_CLIENTS` | `default,-tv_downgraded,web_embedded` | Which YouTube players yt-dlp may ask. |
+| `YT_JS_RUNTIME` | *(empty)* | Full path to `deno.exe` or `node.exe`, for when neither is on `PATH`. |
 
-`OWNER` in `.env` is a comma-separated list of Telegram account ids allowed to use the bot. Leave it empty to allow only the account you logged in with. Anyone not on the list who messages the bot is shown their own id, which is the easy way to collect ids from the people you want to add.
+Two notes on the audio tiers. A tier above what a video's own audio provides is still encoded at that bitrate, so it plays everywhere but adds no detail over the source. And a `1280x720` button at 36 minutes is already around 600 MB, while 1080p is over 1 GB — Telegram's ceiling for what a bot may upload is 2 GB, so on long videos a lower `YT_MAX_H` is the difference between working and failing at the upload step.
+
+### YouTube setup
+
+Two things beyond the pip install, both for YouTube only.
+
+**The challenge solver.** `requirements.txt` asks for `yt-dlp[default]`, which pulls `yt-dlp-ejs`. Those are the solver scripts, and they are not part of a plain `yt-dlp` install. Without them YouTube's "n challenge" fails, every stream arrives without a URL, and yt-dlp offers only storyboard images — which it reports as *"Requested format is not available"*.
+
+**A JavaScript runtime.** Install [deno](https://github.com/denoland/deno/releases) (a single file, no installer) or node. If adding it to `PATH` is awkward on Windows, name it instead:
+
+```
+YT_JS_RUNTIME=C:\Users\You\Downloads\deno.exe
+```
+
+### When YouTube refuses the address
+
+YouTube regularly challenges addresses that look automated with *"Sign in to confirm you're not a bot"*, and when it does, no format is listed and the menu never appears. This keys on the network address, not on the bot. A home connection usually gets through; a shared server or a fresh VPS address is the worst case.
+
+The way past it is cookies from a signed-in browser:
+
+```
+YT_COOKIES=chrome
+```
+
+`edge`, `firefox`, `brave`, `chromium`, `opera`, `safari` and `vivaldi` also work, as does `firefox:container` for a named container.
+
+**On Windows, prefer a `cookies.txt` file.** Windows seals Chromium cookies with DPAPI, which only opens for the same Windows account that owns the browser profile, so a bot running as a service or another user fails with *"Failed to decrypt with DPAPI"* whatever browser you name. Firefox is unaffected. A `cookies.txt` needs no decryption at all: install the *Get cookies.txt LOCALLY* extension, open youtube.com, export, and point at the file.
+
+```
+YT_COOKIES=C:\path\to\cookies.txt
+```
+
+Those are session cookies and they expire within hours. Expect to re-export now and then. Leaving `YT_COOKIES` empty is a legitimate setup too: YouTube then decides per video rather than every link failing at once when a session dies.
+
+## Troubleshooting
+
+The bot turns the failures it knows about into plain sentences rather than passing yt-dlp's last error line through. If you see one of these, here is what it meant.
+
+| What you see | What is actually wrong |
+| --- | --- |
+| *"Sign in to confirm you're not a bot"* | YouTube is challenging the address. Set `YT_COOKIES`. |
+| *"Failed to decrypt with DPAPI"* | A Chromium browser was named on Windows. Export a `cookies.txt`, or use Firefox. |
+| *"The page needs to be reloaded"* | With cookies set, yt-dlp asks for a player YouTube is refusing ([yt-dlp#16212](https://github.com/yt-dlp/yt-dlp/issues/16212), [#17389](https://github.com/yt-dlp/yt-dlp/issues/17389)). Adjust `YT_CLIENTS`. |
+| *"Requested format is not available"* | The challenge solver is missing, or there is no JS runtime. Run `pip install -U "yt-dlp[default]"` and check `YT_JS_RUNTIME`. |
+| Buttons appear, tapping does nothing | yt-dlp is too old for YouTube's current player rules. `pip install -U --pre yt-dlp`. |
+| Only some videos work | Not a fault. YouTube's challenge is per video and driven by how much traffic it has seen. |
+
+## Configuration
+
+Everything lives in `.env` next to `bot.py`. See `.env.example` for the full list.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `API_ID`, `API_HASH` | — | From my.telegram.org. Required. |
+| `BOT_TOKEN` | — | From @BotFather. Required. |
+| `OWNER` | *(empty)* | Comma-separated Telegram ids allowed to use the bot. Empty means only the account you logged in with. Anyone not on the list who messages the bot is shown their own id, which is the easy way to collect ids from people you want to add. |
+| `BOT_LANG` | `en` | Reply language, a file name in `i18n/`. |
 
 ## Keep it running
 
@@ -124,7 +174,17 @@ If a Telegram post type the bot does not understand comes back, it replies with 
 python test_bot.py
 ```
 
+Plain asserts, no test framework, and it needs nothing from the network. The YouTube format menu is built from a captured format list so the size labels, codec preference and height cap can all be checked offline.
+
 `IG_TEST=<shortcode> python test_bot.py` additionally downloads that Instagram post for real.
+
+## How it works
+
+Two Telethon clients run in one process. Your own account (a user session) fetches the Telegram message and, if needed, downloads the media. The bot re-sends it to you. Bots cannot read arbitrary chats or copy out of protected ones, which is why the user session is required. For private chats the fetching account must already be a member.
+
+Instagram posts are fetched anonymously with instaloader, so no Instagram login is involved. YouTube links are read with yt-dlp, which needs no login unless YouTube's challenge forces the question.
+
+The YouTube menu is the only stateful part: an open menu is held in memory under a random token, the buttons carry only that token, and a choice is good once. Formats are selected by a height-bound filter rather than by id, so a format list that differs from the one behind the menu still resolves to something playable.
 
 ## Notes
 
