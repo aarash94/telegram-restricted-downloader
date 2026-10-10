@@ -97,6 +97,15 @@ os.environ.pop("YT_COOKIES", None)
 assert yt_error(Exception("ERROR: \x1b[0;31m[x] \x1b[0m [youtube] abc: Sign in to confirm you\u2019re not a bot.")) == T['yt_botcheck']
 assert yt_error(ValueError("no such format")) == "ValueError: no such format"
 assert yt_error(Exception("ERROR: Failed to decrypt with DPAPI. See ... for more info")) == T['yt_dpapi']
+
+# the choice keyboard has to be inline buttons with callback data: Button.text is a reply-keyboard button
+# that takes no data at all, and callback_data is capped at 64 bytes
+from telethon import Button
+from telethon.tl.types import KeyboardInlineButton
+row = [Button.inline(c[0], data=f"yt:{'t' * 12}:{i}") for i, c in enumerate(yt_choices(INFO))]
+assert all(isinstance(b, KeyboardInlineButton) for b in row), "choices must be inline buttons"
+assert all(b.type.data == f"yt:{'t' * 12}:{i}".encode() for i, b in enumerate(row)), "callback data must round-trip"
+assert all(len(b.type.data) <= 64 for b in row), "callback data over Telegram's 64-byte cap"
 if os.environ.get("IG_TEST"):  # IG_TEST=<shortcode> hits Instagram for real; off by default
     import shutil
     from bot import ig_download

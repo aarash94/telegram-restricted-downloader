@@ -287,7 +287,7 @@ async def main():
                     YT_PENDING[token] = (ev.chat_id, vid, info.get("title"), choices)
                     await note.edit(T['yt_pick'].format(yt_name(info.get("title"), "").rstrip("."),
                                                         human_time(info.get("duration")), len(choices)),
-                                buttons=[[Button.text(c[0], data=f"yt:{token}:{i}")] for i, c in enumerate(choices)],
+                                buttons=[[Button.inline(c[0], data=f"yt:{token}:{i}")] for i, c in enumerate(choices)],
                                 parse_mode=None)  # video titles carry *stars* and _underscores_ of their own
                 except Exception as e:  # drop the placeholder, then report it in plain words
                     await note.delete()
