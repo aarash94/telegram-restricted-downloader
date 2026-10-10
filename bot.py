@@ -221,6 +221,8 @@ def yt_error(e):
         return T['yt_noruntime']
     if "needs to be reloaded" in msg:  # yt-dlp's cookie path lands on a player YouTube is refusing
         return T['yt_stale']
+    if "challenge solving failed" in msg:
+        return T['yt_noejs']
     return f"{type(e).__name__}: {msg[:400]}"
 
 

@@ -3,5 +3,7 @@ cryptg             # faster MTProto crypto
 instaloader>=4.15  # Instagram posts and reels
 pillow             # converts Instagram's webp pictures to jpg so Telegram shows them as photos
 hachoir            # lets Telethon read video dimensions/duration so reels arrive as streamable videos
-yt-dlp>=2025.10.22  # YouTube formats; this floor requires Python 3.10+ on purpose, and ffmpeg to merge mp4/mp3
+yt-dlp[default]>=2025.10.22  # YouTube formats; this floor requires Python 3.10+ on purpose. [default] is not
+                          # optional: it pulls yt-dlp-ejs, the challenge-solver scripts. Without them YouTube's
+                          # "n challenge" fails, every stream loses its URL, and only storyboards survive.
 imageio-ffmpeg      # supplies an ffmpeg binary through pip when there is no ffmpeg on PATH
