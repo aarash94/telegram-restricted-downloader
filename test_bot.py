@@ -35,6 +35,41 @@ assert ig_parse("instagram.com/reels/C1a2B3c4D5e") == "C1a2B3c4D5e"
 assert ig_parse("https://www.instagram.com/someuser/p/C1a2B3c4D5e/") == "C1a2B3c4D5e"
 assert ig_parse("https://www.instagram.com/stories/someuser/123/") is None
 assert ig_parse("https://t.me/cats/7") is None
+from bot import yt_parse, yt_choices, yt_name, human_size, human_time
+assert yt_parse("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+assert yt_parse("https://youtu.be/dQw4w9WgXcQ?t=43") == "dQw4w9WgXcQ"
+assert yt_parse("https://www.youtube.com/shorts/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+assert yt_parse("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123&index=2") == "dQw4w9WgXcQ"
+assert yt_parse("https://m.youtube.com/watch?feature=share&v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+assert yt_parse("https://www.instagram.com/p/C1a2B3c4D5e/") is None
+assert yt_parse("https://t.me/cats/7") is None
+assert yt_parse("hello") is None
+
+assert human_size(0) == "?" and human_size(None) == "?"
+assert human_size(512) == "512 B" and human_size(2048) == "2.0 kB"
+assert human_size(1536 * 1024) == "1.5 MB" and human_size(3 * 1024 ** 3) == "3.0 GB"
+assert human_time(213) == "3:33" and human_time(None) == ""
+assert yt_name('a/b:c*d?"e', "mp4") == "abcde.mp4"  # forbidden characters dropped, extension kept
+assert yt_name("", "mp3") == "video.mp3"
+
+# choices are built offline from a captured format list: mp4 video up to YT_MAX_H, then mp3 audio
+INFO = {"duration": 213, "formats": [
+    {"format_id": "sb0", "ext": "mhtml", "height": 180, "vcodec": "none", "acodec": "none", "protocol": "mhtml"},
+    {"format_id": "160", "ext": "mp4", "height": 144, "vcodec": "avc1.4D400C", "acodec": "none", "protocol": "https", "filesize": 2000, "tbr": 77},
+    {"format_id": "313", "ext": "webm", "height": 2160, "vcodec": "vp9", "acodec": "none", "protocol": "https", "filesize": 999, "tbr": 9999},
+    {"format_id": "399", "ext": "mp4", "height": 1080, "vcodec": "av01.0.08M.08", "acodec": "none", "protocol": "https", "filesize": 300, "tbr": 1142},
+    {"format_id": "137", "ext": "mp4", "height": 1080, "vcodec": "avc1.640028", "acodec": "none", "protocol": "https", "filesize": 1000, "tbr": 3038},
+    {"format_id": "137h", "ext": "mp4", "height": 1080, "vcodec": "avc1.640028", "acodec": "none", "protocol": "m3u8_native", "filesize": 9000, "tbr": 9000},
+    {"format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "protocol": "https", "filesize": 100, "abr": 130},
+    {"format_id": "251", "ext": "webm", "vcodec": "none", "acodec": "opus", "protocol": "https", "filesize": 100, "abr": 129},
+]}
+choices = yt_choices(INFO)
+assert [c[0] for c in choices] == ["🎬 1080p · mp4 · 1.1 kB", "🎬 144p · mp4 · 2.1 kB",
+                                  "🎵 audio · mp3 128kbps · 3.3 MB"], [c[0] for c in choices]
+assert choices[0][1] == "137+140"  # avc1 picked over the smaller av01; m3u8 and >1080p skipped
+assert choices[0][3] == 1100  # 1000 video + 100 audio
+assert choices[-1][2] == [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": 128}]
+assert yt_choices({"formats": [{"format_id": "x", "ext": "mhtml", "vcodec": "none", "acodec": "none"}]}) == []
 if os.environ.get("IG_TEST"):  # IG_TEST=<shortcode> hits Instagram for real; off by default
     import shutil
     from bot import ig_download

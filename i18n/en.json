@@ -1,11 +1,15 @@
 {
-  "welcome": "Hi! 👋\nSend me a Telegram message link and I will send that message back to you.\nWorks even for channels where saving and forwarding are disabled.\nInstagram post and reel links work too.",
-  "bad_link": "That is not a valid link. Send a Telegram message link or an Instagram post link, for example:\nhttps://t.me/channel/123\nhttps://www.instagram.com/p/CODE/",
+  "welcome": "Hi! 👋\nSend me a Telegram message link and I will send that message back to you.\nWorks even for channels where saving and forwarding are disabled.\nInstagram post and reel links work too.\nYouTube links work as well: pick the quality or audio only.",
+  "bad_link": "That is not a valid link. Send a Telegram message link, an Instagram post link or a YouTube link, for example:\nhttps://t.me/channel/123\nhttps://www.instagram.com/p/CODE/\nhttps://youtu.be/VIDEOID",
   "not_found": "Message not found. Is the account a member of that chat?",
   "downloading": "Downloading… ⏳",
   "unsupported": "This message type is not supported (poll, location, contact, …).",
   "empty": "(empty message)",
   "next": "Done ✅\nSend the next link.",
   "error": "Error ❌",
-  "private": "This bot is private.\nYour id: {}"
+  "private": "This bot is private.\nYour id: {}",
+  "yt_fetching": "Looking up the available formats… ⏳",
+  "yt_pick": "{}  ·  {}\n\nPick what to download ({} options below):",
+  "yt_none": "I could not find any downloadable format for this video.",
+  "yt_expired": "This menu has expired. Send the link again."
 }

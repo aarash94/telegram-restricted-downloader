@@ -3,3 +3,4 @@ cryptg             # faster MTProto crypto
 instaloader>=4.15  # Instagram posts and reels
 pillow             # converts Instagram's webp pictures to jpg so Telegram shows them as photos
 hachoir            # lets Telethon read video dimensions/duration so reels arrive as streamable videos
+yt-dlp>=2025.10.22  # YouTube formats; this floor requires Python 3.10+ on purpose, and ffmpeg for mp4/mp3

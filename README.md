@@ -1,8 +1,8 @@
 # telegram-restricted-downloader
 
-**Instagram downloader and Telegram restricted-content saver, as a Telegram bot.** Paste a link, get the post back: Telegram messages, including channels and groups that block saving and forwarding, and Instagram posts and reels.
+**Instagram, YouTube and Telegram restricted-content downloader, as a Telegram bot.** Paste a link, get the post back: Telegram messages, including channels and groups that block saving and forwarding, Instagram posts and reels, and YouTube videos or audio in the quality you pick.
 
-One Python file, ~160 lines, no database, no web server, no ffmpeg.
+One Python file, ~290 lines, no database, no web server.
 
 ![demo: paste a link, get the post back](docs/demo.gif)
 
@@ -10,10 +10,11 @@ One Python file, ~160 lines, no database, no web server, no ffmpeg.
 
 - 🧱 **Reads Telegram's new rich posts.** Since 2026 some channels publish block-based posts (the Instant View format). Their classic text and media fields are empty, so every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
 - 📸 **Instagram too.** Paste a post or reel link and every photo and video in it arrives as one album, caption included. No Instagram account needed for public posts.
+- ▶️ **YouTube too.** Paste a video link and the bot replies with a button per option, each labelled with quality, file extension and size: `🎬 1080p · mp4 · 80.5 MB` or `🎵 audio · mp3 128kbps · 3.3 MB`. Tap one and the finished file arrives, named after the video.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
 - 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
-- 🪶 **Nothing to host but the script.** One file, no MongoDB, no Flask keep-alive, no Docker, no ffmpeg. Works on Windows, Linux and macOS.
+- 🪶 **Nothing to host but the script.** One file, no MongoDB, no Flask keep-alive, no Docker. Works on Windows, Linux and macOS.
 
 ## How it works
 
@@ -21,13 +22,16 @@ Two Telethon clients run in one process. Your own account (a user session) fetch
 
 Instagram posts are fetched anonymously with instaloader, so no Instagram login is involved.
 
+YouTube links are read with yt-dlp, which does not need a login either. Because YouTube regularly asks its own servers to challenge requests that look automated, a fresh or shared server address can hit a "Sign in to confirm you're not a bot" wall that no option here removes; a home connection generally works, and it clears on its own after a while.
+
 ## Setup
 
 1. Python 3.10 or newer, then `pip install -r requirements.txt`
-2. Create an application at https://my.telegram.org to get `API_ID` and `API_HASH`. Create a bot with [@BotFather](https://t.me/BotFather) to get `BOT_TOKEN`.
-3. `cp .env.example .env` and fill in the values.
-4. `python bot.py`. The first run asks for the phone number and login code of the fetching account, plus the two-step password if enabled. The login is saved to `user.session`, so this happens once.
-5. Open your bot in Telegram, press Start, paste a link.
+2. Install **ffmpeg** and keep it on `PATH`. Instagram and Telegram need nothing else, but YouTube merges the separate video and audio streams into one `.mp4` and converts audio to `.mp3`, both of which ffmpeg does. On macOS `brew install ffmpeg`, on Debian/Ubuntu `apt install ffmpeg`, on Windows `winget install ffmpeg`.
+3. Create an application at https://my.telegram.org to get `API_ID` and `API_HASH`. Create a bot with [@BotFather](https://t.me/BotFather) to get `BOT_TOKEN`.
+4. `cp .env.example .env` and fill in the values.
+5. `python bot.py`. The first run asks for the phone number and login code of the fetching account, plus the two-step password if enabled. The login is saved to `user.session`, so this happens once.
+6. Open your bot in Telegram, press Start, paste a link.
 
 ## Supported links
 
@@ -39,9 +43,31 @@ https://t.me/b/botname/123               a chat with a bot
 https://t.me/channel/123?single          single item of an album
 https://www.instagram.com/p/CODE/        Instagram post, all photos and videos
 https://www.instagram.com/reel/CODE/     Instagram reel
+https://www.youtube.com/watch?v=ID        YouTube video, pick quality or audio
+https://youtu.be/ID                       same, short form
+https://www.youtube.com/shorts/ID         same, Shorts
 ```
 
 Instagram stories, highlights and private accounts are not supported. Instagram rate-limits anonymous downloads and may block a server's address for a while after too many requests, so leave a minute between links and wait if it starts failing.
+
+## YouTube options
+
+Paste a link and the bot answers with one button per option, each showing quality, extension and size:
+
+```
+🎬 1080p · mp4 · 80.5 MB
+🎬 720p · mp4 · 28.5 MB
+🎵 audio · mp3 128kbps · 3.3 MB
+```
+
+Every video option is `.mp4`, made by pairing YouTube's H.264 video stream with its best m4a audio and muxing them, because mp4 is the one container every phone and browser plays. Audio options are the same best audio, re-encoded to mp3. Sizes are real estimates from YouTube's own metadata, so what the button promises is what lands in the chat.
+
+Two values in `.env` tune the menu:
+
+- `YT_MAX_H` hides every resolution above the one you set. The default is `1080`; `2160` adds 1440p and 4K.
+- `YT_AUDIO_KBPS` is the list of audio bitrates to offer, default `128,192,320`. A tier is hidden when the video's own audio is lower, since encoding silence up to 320 kbps wastes space without adding quality.
+
+Playlists are not supported: only the single video in the link is offered.
 
 ## Access control
 
@@ -88,6 +114,6 @@ python test_bot.py
 
 ## Notes
 
-Use your own API credentials and your own account. Respect the wishes of content owners and the terms of Telegram and Instagram. This tool exists for personal archiving of content you already have access to.
+Use your own API credentials and your own account. Respect the wishes of content owners and the terms of Telegram, Instagram and YouTube. This tool exists for personal archiving of content you already have access to.
 
 MIT license.

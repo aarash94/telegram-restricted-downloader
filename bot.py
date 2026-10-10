@@ -1,13 +1,15 @@
 """Personal Telegram bot: send it a t.me link, get the message back (restricted or not).
 Send it an Instagram post or reel link, get every photo and video in it.
+Send it a YouTube link, pick video quality or audio only, get the file back.
 
 Your own account (user session) fetches + downloads; the bot re-sends to you.
 First run asks for your phone + login code once, then sessions are saved to *.session files.
 """
 import asyncio, json, os, re, shutil
 import instaloader
+import yt_dlp
 from PIL import Image
-from telethon import TelegramClient, events
+from telethon import Button, TelegramClient, events
 from telethon.tl.types import Document, MessageMediaWebPage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,8 +30,13 @@ T = json.load(open(os.path.join(HERE, "i18n", f"{BOT_LANG}.json"), encoding="utf
 LINK = re.compile(r"t\.me/(c/|b/)?(\w+)(?:/\d+)?/(\d+)")
 # instagram.com/p/<code>, /reel/<code>, /reels/<code>, /tv/<code>, optionally under /<username>/; ?igsh=... ok
 IG = re.compile(r"instagram\.com/(?:[\w.]+/)?(?:p|reels?|tv)/([\w-]+)")
+# youtube.com/watch?v=ID, youtu.be/ID, /shorts/ID, /live/ID, /embed/ID; ?t= &list= trailing junk ok
+YT = re.compile(r"(?:youtube\.com/(?:watch\?(?:[^&\s]*&)*v=|shorts/|live/|embed/|v/)|youtu\.be/)([\w-]{11})")
 IG_LOADER = instaloader.Instaloader(dirname_pattern="dl/{target}", save_metadata=False, download_video_thumbnails=False,
                                     post_metadata_txt_pattern="", quiet=True)  # media files only, nothing else
+YT_MAX_H = int(os.environ.get("YT_MAX_H", 1080))  # highest video button offered
+YT_AUDIO_KBPS = [int(x) for x in os.environ.get("YT_AUDIO_KBPS", "128,192,320").split(",") if x.strip()]
+YT_PENDING = {}  # callback token -> (chat_id, video_id, title, choices); one entry per open choice keyboard
 
 
 def rich_walk(node, out, media):
@@ -74,6 +81,85 @@ def ig_download(code):
     return folder, post.caption or ""
 
 
+def yt_parse(text):
+    m = YT.search(text or "")
+    return m and m.group(1)
+
+
+def human_size(n):
+    """1234567 -> '1.2 MB'; None/0 -> '?', so an unknown YouTube size never shows as a bare 0 B."""
+    for unit, size in (("GB", 1024 ** 3), ("MB", 1024 ** 2), ("kB", 1024)):
+        if n and n >= size:
+            return f"{n / size:.1f} {unit}"
+    return f"{n} B" if n else "?"
+
+
+def human_time(s):
+    """213 -> '3:33'; None -> '', so a video without a duration just shows no length."""
+    if not s:
+        return ""
+    return f"{int(s) // 60}:{int(s) % 60:02d}"
+
+
+def yt_name(title, ext):
+    """A safe, readable file name: strip what Windows/macOS forbid, keep the extension the user chose."""
+    title = re.sub(r'[/\\:*?"<>|\x00-\x1f]', "", title or "").strip()[:80] or "video"
+    return f"{title}.{ext}"
+
+
+def yt_choices(info):
+    """Blocking-free: turn yt-dlp's format list into the buttons the user picks from.
+
+    Each choice is (label, format selector, postprocessors, expected bytes). Video is mp4 only, so the
+    menu stays small and the merged file plays everywhere; audio is the best m4a re-encoded to mp3.
+    """
+    fmts = [f for f in info.get("formats") or [] if f.get("ext") != "mhtml"]  # drop storyboard thumbnails
+    audio = [f for f in fmts if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none")]
+    video = [f for f in fmts if f.get("vcodec") not in (None, "none") and f.get("acodec") == "none"]
+    best_a = max((f for f in audio if f.get("ext") == "m4a" and f.get("protocol") == "https"),
+                 key=lambda f: f.get("abr") or 0, default=None) or max(audio, key=lambda f: f.get("abr") or 0, default=None)
+    out, a_size = [], (best_a.get("filesize") or best_a.get("filesize_approx")) if best_a else 0
+    for h in sorted({f["height"] for f in video if f.get("height") and f["height"] <= YT_MAX_H}, reverse=True):
+        same = [f for f in video if f["height"] == h and f.get("protocol") == "https" and f.get("ext") == "mp4"]
+        # avc1/H.264 plays on every client; av01 only where the platform has a decoder
+        v = max((f for f in same if (f.get("vcodec") or "").startswith("avc1")), key=lambda f: f.get("tbr") or 0, default=None) \
+            or max(same, key=lambda f: f.get("tbr") or 0, default=None)
+        if not v or not best_a:  # no separate audio stream means nothing to merge, so mp4 video is unplayable
+            continue
+        out.append((f"🎬 {h}p · mp4 · {human_size((v.get('filesize') or v.get('filesize_approx') or 0) + (a_size or 0))}",
+                    f"{v['format_id']}+{best_a['format_id']}", None, (v.get("filesize") or v.get("filesize_approx") or 0) + (a_size or 0)))
+    dur = info.get("duration") or 0
+    if best_a:
+        for kbps in sorted(YT_AUDIO_KBPS, reverse=True):  # never offer a tier above what YouTube itself serves
+            if kbps > max(best_a.get("abr") or 0, 128):
+                continue
+            size = int(dur * kbps * 125)  # kbps * 1000 bits per second over 8, times seconds
+            out.append((f"🎵 audio · mp3 {kbps}kbps · {human_size(size)}", best_a["format_id"],
+                        [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": kbps}], size))
+    return out
+
+
+def yt_info(vid):
+    """Blocking: probe a video's formats without downloading; yt-dlp picks the player client for us."""
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as y:
+        return y.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
+
+
+def yt_download(vid, choice, folder):
+    """Blocking: download one already-chosen format into folder/ and return the resulting file path."""
+    _, fmt, post, _ = choice
+    opts = {"quiet": True, "no_warnings": True, "noprogress": True, "noplaylist": True, "format": fmt,
+            "outtmpl": os.path.join(folder, "%(id)s.%(ext)s"), "merge_output_format": "mp4"}
+    if post:
+        opts["postprocessors"] = post
+    with yt_dlp.YoutubeDL(opts) as y:
+        y.download([f"https://www.youtube.com/watch?v={vid}"])
+    files = [os.path.join(folder, f) for f in os.listdir(folder) if not f.endswith((".part", ".ytdl", ".temp"))]
+    if not files:
+        raise RuntimeError("yt-dlp produced no file")
+    return max(files, key=os.path.getsize)
+
+
 async def main():
     user = await TelegramClient("user", API_ID, API_HASH).start()
     bot = await TelegramClient("bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -87,10 +173,27 @@ async def main():
 
     @bot.on(events.NewMessage(from_users=allowed))
     async def save(ev):
-        link, code = parse(ev.raw_text), ig_parse(ev.raw_text)
-        if not link and not code:
+        link, code, vid = parse(ev.raw_text), ig_parse(ev.raw_text), yt_parse(ev.raw_text)
+        if not link and not code and not vid:
             return await ev.respond(T['welcome'] if ev.raw_text.startswith("/start") else T['bad_link'])
         try:
+            if vid:  # YouTube: show the quality/format menu, download whatever the owner taps
+                note = await ev.reply(T['yt_fetching'])
+                try:
+                    info = await asyncio.to_thread(yt_info, vid)
+                    choices = yt_choices(info)
+                    if not choices:
+                        return await note.edit(T['yt_none'])
+                    token = os.urandom(6).hex()  # callback_data is capped at 64 bytes, so keep only a token
+                    YT_PENDING[token] = (ev.chat_id, vid, info.get("title"), choices)
+                    await note.edit(T['yt_pick'].format(yt_name(info.get("title"), "").rstrip("."),
+                                                        human_time(info.get("duration")), len(choices)),
+                                buttons=[[Button.text(c[0], data=f"yt:{token}:{i}")] for i, c in enumerate(choices)],
+                                parse_mode=None)  # video titles carry *stars* and _underscores_ of their own
+                except Exception:  # drop the placeholder, then let the shared handler report what went wrong
+                    await note.delete()
+                    raise
+                return
             if code:  # Instagram: all photos/videos of the post as one album (Telethon splits past 10)
                 note = await ev.reply(T['downloading'])
                 folder = os.path.join("dl", code)
@@ -156,6 +259,34 @@ async def main():
             await ev.respond(T['next'])
         except Exception as e:  # surface every failure to the owner instead of only the log
             await ev.reply(f"{T['error']}\n{type(e).__name__}: {e}")
+
+    @bot.on(events.CallbackQuery(func=lambda e: (e.data or "").startswith("yt:")))
+    async def yt_pick(ev):
+        try:
+            _, token, index = ev.data.split(":")
+            chat, vid, title, choices = YT_PENDING[token]
+        except (ValueError, KeyError):  # token expired or the menu was never registered
+            return await ev.answer(T['yt_expired'], alert=True)
+        if chat != ev.chat_id or ev.sender_id not in allowed:
+            return await ev.answer(T['yt_expired'], alert=True)
+        try:
+            choice = choices[int(index)]
+        except (ValueError, IndexError):
+            return await ev.answer(T['yt_expired'], alert=True)
+        del YT_PENDING[token]  # one choice per menu, so a second tap cannot start a second download
+        await ev.answer()
+        folder = os.path.join("dl", "yt", token)
+        try:
+            await ev.edit(T['downloading'])
+            path = await asyncio.to_thread(yt_download, vid, choice, folder)
+            await bot.send_file(ev.chat_id, path,
+                                file_name=yt_name(title, os.path.splitext(path)[1].lstrip(".")),
+                                force_document=True)  # as a file, so the extension the owner picked is the one they get
+            await ev.delete()
+        except Exception as e:
+            await ev.edit(f"{T['error']}\n{type(e).__name__}: {e}")
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)  # also clears a half-finished download
 
     print("bot running as", me.first_name, "| allowed ids:", allowed)
     await bot.run_until_disconnected()
