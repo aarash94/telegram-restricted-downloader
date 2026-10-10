@@ -120,6 +120,9 @@ def yt_choices(info):
 
     Each choice is (label, format selector, postprocessors, expected bytes). Video is mp4 only, so the
     menu stays small and the merged file plays everywhere; audio is the best m4a re-encoded to mp3.
+
+    Selectors are height-bound filters rather than the format ids seen here, because the download
+    re-extracts and YouTube may hand back a different list than the one this menu was built from.
     """
     fmts = [f for f in info.get("formats") or [] if f.get("ext") != "mhtml"]  # drop storyboard thumbnails
     audio = [f for f in fmts if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none")]
@@ -134,15 +137,19 @@ def yt_choices(info):
             or max(same, key=lambda f: f.get("tbr") or 0, default=None)
         if not v or not best_a:  # no separate audio stream means nothing to merge, so mp4 video is unplayable
             continue
+        # <= rather than == so a re-extraction without that exact height still resolves; vcodec^=avc1
+        # keeps the delivered file the H.264 one the size on the button was worked out from
+        sel = (f"bv*[vcodec^=avc1][height<={h}][ext=mp4]+ba[ext=m4a]"
+               f"/bv*[height<={h}][ext=mp4]+ba[ext=m4a]/b[height<={h}][ext=mp4]")
         out.append((f"🎬 {h}p · mp4 · {human_size((v.get('filesize') or v.get('filesize_approx') or 0) + (a_size or 0))}",
-                    f"{v['format_id']}+{best_a['format_id']}", None, (v.get("filesize") or v.get("filesize_approx") or 0) + (a_size or 0)))
+                    sel, None, (v.get("filesize") or v.get("filesize_approx") or 0) + (a_size or 0)))
     dur = info.get("duration") or 0
     if best_a:
         for kbps in sorted(YT_AUDIO_KBPS, reverse=True):  # never offer a tier above what YouTube itself serves
             if kbps > max(best_a.get("abr") or 0, 128):
                 continue
             size = int(dur * kbps * 125)  # kbps * 1000 bits per second over 8, times seconds
-            out.append((f"🎵 audio · mp3 {kbps}kbps · {human_size(size)}", best_a["format_id"],
+            out.append((f"🎵 audio · mp3 {kbps}kbps · {human_size(size)}", "ba[ext=m4a]/ba/b",
                         [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": kbps}], size))
     return out
 
