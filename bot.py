@@ -176,11 +176,28 @@ def yt_cookies():
     return {"cookiesfrombrowser": (browser, profile.strip() or None, None, None)}
 
 
+def yt_has_runtime():
+    return bool(os.environ.get("YT_JS_RUNTIME", "").strip()) or shutil.which("deno") or shutil.which("node")
+
+
+def yt_js_runtime():
+    """YouTube only serves playable streams when a JavaScript runtime can solve its signature cipher, and
+    yt-dlp needs deno or node for that. PATH is the usual source; YT_JS_RUNTIME names the executable
+    directly, which spares anyone the business of editing PATH.
+    """
+    p = os.environ.get("YT_JS_RUNTIME", "").strip().strip('"')
+    if not p:
+        return {}
+    if not os.path.isfile(p):
+        raise RuntimeError(f"YT_JS_RUNTIME: {p!r} is not a file. Point it at deno.exe or node.exe.")
+    return {"js_runtimes": {"deno" if "deno" in os.path.basename(p).lower() else "node": {"path": p}}}
+
+
 def yt_opts():
-    """Settings shared by both yt-dlp calls: no playlist, no chatter, the cookies if configured, and the
-    player clients that currently work."""
+    """Settings shared by both yt-dlp calls: no playlist, no chatter, the cookies if configured, the
+    player clients that currently work, and where the JavaScript runtime lives."""
     return {"quiet": True, "no_warnings": True, "noplaylist": True,
-            "extractor_args": {"youtube": {"player_client": YT_CLIENTS}}, **yt_cookies()}
+            "extractor_args": {"youtube": {"player_client": YT_CLIENTS}}, **yt_cookies(), **yt_js_runtime()}
 
 
 def yt_error(e):
@@ -190,7 +207,7 @@ def yt_error(e):
         return T['yt_botcheck']
     if "DPAPI" in msg:  # Windows sealed the browser's cookies for a different account than this one runs as
         return T['yt_dpapi']
-    if not (shutil.which("deno") or shutil.which("node")) and (
+    if not yt_has_runtime() and (
             "needs to be reloaded" in msg or "Requested format is not available" in msg):
         # YouTube's clients only sign their streams when a JS runtime can solve the cipher, and yt-dlp
         # reports the missing runtime as an unplayable page or an empty format list
