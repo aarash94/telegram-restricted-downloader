@@ -360,10 +360,10 @@ async def main():
         except Exception as e:  # surface every failure to the owner instead of only the log
             await ev.reply(f"{T['error']}\n{type(e).__name__}: {e}")
 
-    @bot.on(events.CallbackQuery(func=lambda e: (e.data or "").startswith("yt:")))
+    @bot.on(events.CallbackQuery(func=lambda e: (e.data or b"").startswith(b"yt:")))
     async def yt_pick(ev):
-        try:
-            _, token, index = ev.data.split(":")
+        try:  # callback data arrives as bytes from Telethon, unlike the message text above
+            _, token, index = ev.data.decode().split(":")
             chat, vid, title, choices = YT_PENDING[token]
         except (ValueError, KeyError):  # token expired or the menu was never registered
             return await ev.answer(T['yt_expired'], alert=True)

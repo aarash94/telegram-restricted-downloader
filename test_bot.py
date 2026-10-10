@@ -106,6 +106,12 @@ row = [Button.inline(c[0], data=f"yt:{'t' * 12}:{i}") for i, c in enumerate(yt_c
 assert all(isinstance(b, KeyboardInlineButton) for b in row), "choices must be inline buttons"
 assert all(b.type.data == f"yt:{'t' * 12}:{i}".encode() for i, b in enumerate(row)), "callback data must round-trip"
 assert all(len(b.type.data) <= 64 for b in row), "callback data over Telegram's 64-byte cap"
+
+# Telethon hands callback data over as bytes, not str: matching and parsing both need to cope with that,
+# and a str-only filter raises inside Telethon's func check so the handler silently never fires
+assert (b"yt:abc:0".startswith(b"yt:")), "callback filter must match bytes"
+assert b"yt:abc:0".decode().split(":") == ["yt", "abc", "0"]
+assert not (b"other:abc:0".startswith(b"yt:"))
 if os.environ.get("IG_TEST"):  # IG_TEST=<shortcode> hits Instagram for real; off by default
     import shutil
     from bot import ig_download
