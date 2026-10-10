@@ -79,7 +79,7 @@ Every video option is `.mp4`, made by pairing YouTube's H.264 video stream with 
 Two values in `.env` tune the menu:
 
 - `YT_MAX_H` hides every resolution above the one you set. The default is `1080`; `2160` adds 1440p and 4K.
-- `YT_AUDIO_KBPS` is the list of audio bitrates to offer, default `128,192,320`. A tier is hidden when the video's own audio is lower, since encoding silence up to 320 kbps wastes space without adding quality.
+- `YT_AUDIO_KBPS` is the list of audio bitrates to offer, default `128,192,320`. Every tier in the list gets a button. A tier above what the video's own audio provides is still encoded at that bitrate, so it plays everywhere but adds no detail over the source; drop the ones you do not want.
 
 Playlists are not supported: only the single video in the link is offered.
 

@@ -65,7 +65,9 @@ INFO = {"duration": 213, "formats": [
 ]}
 choices = yt_choices(INFO)
 assert [c[0] for c in choices] == ["🎬 1080p · mp4 · 1.1 kB", "🎬 144p · mp4 · 2.1 kB",
+                                  "🎵 audio · mp3 320kbps · 8.1 MB", "🎵 audio · mp3 192kbps · 4.9 MB",
                                   "🎵 audio · mp3 128kbps · 3.3 MB"], [c[0] for c in choices]
+assert [c[3] for c in choices[-3:]] == [213 * k * 125 for k in (320, 192, 128)]  # seconds x kbps over 8
 assert choices[0][1].startswith("bv*[vcodec^=avc1][height<=1080][ext=mp4]+ba[ext=m4a]")  # H.264, as sized
 assert "137" not in choices[0][1] and "140" not in choices[0][1]  # never bake in ids from the menu's extraction
 assert choices[0][3] == 1100  # 1000 video + 100 audio

@@ -145,10 +145,8 @@ def yt_choices(info):
                     sel, None, (v.get("filesize") or v.get("filesize_approx") or 0) + (a_size or 0)))
     dur = info.get("duration") or 0
     if best_a:
-        for kbps in sorted(YT_AUDIO_KBPS, reverse=True):  # never offer a tier above what YouTube itself serves
-            if kbps > max(best_a.get("abr") or 0, 128):
-                continue
-            size = int(dur * kbps * 125)  # kbps * 1000 bits per second over 8, times seconds
+        for kbps in sorted(YT_AUDIO_KBPS, reverse=True):  # every configured tier is offered, even above
+            size = int(dur * kbps * 125)  # the source's own bitrate, which is what the owner asked to pick
             out.append((f"🎵 audio · mp3 {kbps}kbps · {human_size(size)}", "ba[ext=m4a]/ba/b",
                         [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": kbps}], size))
     return out
