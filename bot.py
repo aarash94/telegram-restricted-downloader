@@ -110,8 +110,11 @@ def human_time(s):
 
 
 def yt_name(title, ext):
-    """A safe, readable file name: strip what Windows/macOS forbid, keep the extension the user chose."""
-    title = re.sub(r'[/\\:*?"<>|\x00-\x1f]', "", title or "").strip()[:80] or "video"
+    """A safe, readable file name: strip what Windows/macOS forbid, keep the extension as chosen.
+
+    % goes too, because the name is handed to yt-dlp as an output template where % is a placeholder.
+    """
+    title = re.sub(r'[/\\:*?"<>|\x00-\x1f%]', "", title or "").strip()[:80] or "video"
     return f"{title}.{ext}"
 
 
@@ -242,11 +245,16 @@ def yt_info(vid):
         return y.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
 
 
-def yt_download(vid, choice, folder):
-    """Blocking: download one already-chosen format into folder/ and return the resulting file path."""
+def yt_download(vid, choice, folder, title):
+    """Blocking: download one already-chosen format into folder/ and return the resulting file path.
+
+    The file is written under the video's title, because Telethon's send_file has no file_name
+    parameter and Telegram therefore takes the name off the path it is given.
+    """
     _, fmt, post, _ = choice
     opts = {**yt_opts(), "noprogress": True, "format": fmt,
-            "outtmpl": os.path.join(folder, "%(id)s.%(ext)s"), "merge_output_format": "mp4", **yt_ffmpeg()}
+            "outtmpl": os.path.join(folder, yt_name(title, "%(ext)s")),
+            "merge_output_format": "mp4", **yt_ffmpeg()}
     if post:
         opts["postprocessors"] = post
     with yt_dlp.YoutubeDL(opts) as y:
@@ -376,10 +384,9 @@ async def main():
         folder = os.path.join("dl", "yt", token)
         try:
             await ev.edit(T['downloading'])
-            path = await asyncio.to_thread(yt_download, vid, choice, folder)
-            await bot.send_file(ev.chat_id, path,
-                                file_name=yt_name(title, os.path.splitext(path)[1].lstrip(".")),
-                                force_document=True)  # as a file, so the extension the owner picked is the one they get
+            path = await asyncio.to_thread(yt_download, vid, choice, folder, title)
+            await bot.send_file(ev.chat_id, path, force_document=True)  # as a file, so the extension the
+            # owner picked is the one they get; the name on disk is already the video's title
             await ev.delete()
         except Exception as e:
             await ev.edit(f"{T['error']}\n{yt_error(e)}")

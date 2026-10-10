@@ -51,6 +51,7 @@ assert human_size(1536 * 1024) == "1.5 MB" and human_size(3 * 1024 ** 3) == "3.0
 assert human_time(213) == "3:33" and human_time(None) == ""
 assert yt_name('a/b:c*d?"e', "mp4") == "abcde.mp4"  # forbidden characters dropped, extension kept
 assert yt_name("", "mp3") == "video.mp3"
+assert yt_name("100% hit", "mp4") == "100 hit.mp4"  # % is a placeholder in yt-dlp's output template
 
 # choices are built offline from a captured format list: mp4 video up to YT_MAX_H, then mp3 audio
 INFO = {"duration": 213, "formats": [
