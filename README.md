@@ -39,7 +39,9 @@ If a `cookies.txt` gets you *past* the bot check and then fails with *"The page 
 ## Setup
 
 1. Python 3.10 or newer, then `pip install -r requirements.txt`
-2. Nothing else to install. YouTube merges the separate video and audio streams into one `.mp4` and converts audio to `.mp3`, and `requirements.txt` covers that with `imageio-ffmpeg`, which puts an ffmpeg binary inside `site-packages`. An ffmpeg already on `PATH` is used instead when there is one; installing one by hand is optional.
+2. Nothing else to install for Telegram or Instagram. YouTube needs two more things:
+   - **ffmpeg** for merging the separate video and audio streams into one `.mp4` and for the `.mp3`. `imageio-ffmpeg` in `requirements.txt` covers this by putting a binary in `site-packages`; an ffmpeg already on `PATH` is used instead when there is one, and installing one by hand is optional.
+   - **A JavaScript runtime** (deno or node) on `PATH`. YouTube only serves playable streams when something can solve its signature cipher, and yt-dlp uses deno or node for that. With neither installed every player returns nothing usable, which yt-dlp reports as *"The page needs to be reloaded"* or *"Requested format is not available"* — messages that do not mention the real cause. deno ships as a single `deno.exe` you can drop in a folder on `PATH`.
 3. Create an application at https://my.telegram.org to get `API_ID` and `API_HASH`. Create a bot with [@BotFather](https://t.me/BotFather) to get `BOT_TOKEN`.
 4. `cp .env.example .env` and fill in the values.
 5. `python bot.py`. The first run asks for the phone number and login code of the fetching account, plus the two-step password if enabled. The login is saved to `user.session`, so this happens once.

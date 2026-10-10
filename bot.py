@@ -190,6 +190,11 @@ def yt_error(e):
         return T['yt_botcheck']
     if "DPAPI" in msg:  # Windows sealed the browser's cookies for a different account than this one runs as
         return T['yt_dpapi']
+    if not (shutil.which("deno") or shutil.which("node")) and (
+            "needs to be reloaded" in msg or "Requested format is not available" in msg):
+        # YouTube's clients only sign their streams when a JS runtime can solve the cipher, and yt-dlp
+        # reports the missing runtime as an unplayable page or an empty format list
+        return T['yt_noruntime']
     if "needs to be reloaded" in msg:  # yt-dlp's cookie path lands on a player YouTube is refusing
         return T['yt_stale']
     return f"{type(e).__name__}: {msg[:400]}"
