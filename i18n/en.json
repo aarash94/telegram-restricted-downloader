@@ -11,5 +11,6 @@
   "yt_fetching": "Looking up the available formats… ⏳",
   "yt_pick": "{}  ·  {}\n\nPick what to download ({} options below):",
   "yt_none": "I could not find any downloadable format for this video.",
-  "yt_expired": "This menu has expired. Send the link again."
+  "yt_expired": "This menu has expired. Send the link again.",
+  "yt_botcheck": "YouTube is blocking this address and wants proof of a real visitor (\"Sign in to confirm you're not a bot\").\n\nSign in to YouTube in a browser on the machine running the bot, then set in .env:\nYT_COOKIES=chrome   (or edge, firefox, brave)\nthen restart the bot. It reads the cookies from that browser.\n\nThis is about the network address, not the bot. On a home connection it often clears on its own after a while; on a shared server it may not."
 }

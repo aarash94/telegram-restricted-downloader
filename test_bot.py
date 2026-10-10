@@ -70,6 +70,24 @@ assert choices[0][1] == "137+140"  # avc1 picked over the smaller av01; m3u8 and
 assert choices[0][3] == 1100  # 1000 video + 100 audio
 assert choices[-1][2] == [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": 128}]
 assert yt_choices({"formats": [{"format_id": "x", "ext": "mhtml", "vcodec": "none", "acodec": "none"}]}) == []
+
+from bot import yt_cookies, yt_error, T
+import os
+os.environ.pop("YT_COOKIES", None)
+assert yt_cookies() == {}
+os.environ["YT_COOKIES"] = "firefox"  # browser name
+assert yt_cookies() == {"cookiesfrombrowser": ("firefox", None, None, None)}
+os.environ["YT_COOKIES"] = "firefox:work"  # optional firefox container
+assert yt_cookies() == {"cookiesfrombrowser": ("firefox", "work", None, None)}
+open("cookies.txt", "w").write("# Netscape HTTP Cookie File\n")
+os.environ["YT_COOKIES"] = "cookies.txt"  # an exported file wins over being read as a browser name
+assert yt_cookies() == {"cookiefile": "cookies.txt"}
+os.remove("cookies.txt")
+os.environ.pop("YT_COOKIES", None)
+
+# yt-dlp colours its errors for a terminal; the owner should see plain words and the fix
+assert yt_error(Exception("ERROR: \x1b[0;31m[x] \x1b[0m [youtube] abc: Sign in to confirm you\u2019re not a bot.")) == T['yt_botcheck']
+assert yt_error(ValueError("no such format")) == "ValueError: no such format"
 if os.environ.get("IG_TEST"):  # IG_TEST=<shortcode> hits Instagram for real; off by default
     import shutil
     from bot import ig_download

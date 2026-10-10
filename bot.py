@@ -150,7 +150,36 @@ def yt_info(vid):
         return y.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
 
 
+def yt_cookies():
+    """YouTube walls off some addresses with "Sign in to confirm you're not a bot". Cookies from a
+    browser that is signed in to YouTube are the documented way past it.
+
+    YT_COOKIES is either a path to a cookies.txt file or a browser yt-dlp can read, optionally as
+    firefox:container. Left empty, the bot just tries anonymously.
+    """
+    v = os.environ.get("YT_COOKIES", "").strip()
+    if not v:
+        return {}
+    if os.path.isfile(v):
+        return {"cookiefile": v}
+    browser, _, profile = v.partition(":")
+    return {"cookiesfrombrowser": (browser.strip(), profile.strip() or None, None, None)}
+
+
 def yt_opts():
+    """Settings shared by both yt-dlp calls: no playlist, no chatter, and the cookies if configured."""
+    return {"quiet": True, "no_warnings": True, "noplaylist": True, **yt_cookies()}
+
+
+def yt_error(e):
+    """yt-dlp's own message, minus the terminal colours, plus the fix when the failure has one."""
+    msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e)).strip()
+    if "confirm you" in msg and "bot" in msg:
+        return T['yt_botcheck']
+    return f"{type(e).__name__}: {msg[:400]}"
+
+
+def yt_ffmpeg():
     """ffmpeg is what merges the two streams into one mp4 and builds the mp3, so yt-dlp must find it.
 
     An ffmpeg on PATH wins; otherwise use the binary imageio-ffmpeg installed into site-packages.
@@ -162,11 +191,17 @@ def yt_opts():
     raise RuntimeError("ffmpeg is missing. Install it on PATH, or run: pip install imageio-ffmpeg")
 
 
+def yt_info(vid):
+    """Blocking: probe a video's formats without downloading; yt-dlp picks the player client for us."""
+    with yt_dlp.YoutubeDL(yt_opts()) as y:
+        return y.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
+
+
 def yt_download(vid, choice, folder):
     """Blocking: download one already-chosen format into folder/ and return the resulting file path."""
     _, fmt, post, _ = choice
-    opts = {"quiet": True, "no_warnings": True, "noprogress": True, "noplaylist": True, "format": fmt,
-            "outtmpl": os.path.join(folder, "%(id)s.%(ext)s"), "merge_output_format": "mp4", **yt_opts()}
+    opts = {**yt_opts(), "noprogress": True, "format": fmt,
+            "outtmpl": os.path.join(folder, "%(id)s.%(ext)s"), "merge_output_format": "mp4", **yt_ffmpeg()}
     if post:
         opts["postprocessors"] = post
     with yt_dlp.YoutubeDL(opts) as y:
@@ -207,9 +242,10 @@ async def main():
                                                         human_time(info.get("duration")), len(choices)),
                                 buttons=[[Button.text(c[0], data=f"yt:{token}:{i}")] for i, c in enumerate(choices)],
                                 parse_mode=None)  # video titles carry *stars* and _underscores_ of their own
-                except Exception:  # drop the placeholder, then let the shared handler report what went wrong
+                except Exception as e:  # drop the placeholder, then report it in plain words
                     await note.delete()
-                    raise
+                    await ev.reply(f"{T['error']}\n{yt_error(e)}")
+                    return
                 return
             if code:  # Instagram: all photos/videos of the post as one album (Telethon splits past 10)
                 note = await ev.reply(T['downloading'])
@@ -301,7 +337,7 @@ async def main():
                                 force_document=True)  # as a file, so the extension the owner picked is the one they get
             await ev.delete()
         except Exception as e:
-            await ev.edit(f"{T['error']}\n{type(e).__name__}: {e}")
+            await ev.edit(f"{T['error']}\n{yt_error(e)}")
         finally:
             shutil.rmtree(folder, ignore_errors=True)  # also clears a half-finished download
 

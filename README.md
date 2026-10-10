@@ -22,7 +22,15 @@ Two Telethon clients run in one process. Your own account (a user session) fetch
 
 Instagram posts are fetched anonymously with instaloader, so no Instagram login is involved.
 
-YouTube links are read with yt-dlp, which does not need a login either. Because YouTube regularly asks its own servers to challenge requests that look automated, a fresh or shared server address can hit a "Sign in to confirm you're not a bot" wall that no option here removes; a home connection generally works, and it clears on its own after a while.
+YouTube links are read with yt-dlp, which does not need a login. One thing does bite in practice: YouTube regularly challenges addresses that look automated with *"Sign in to confirm you're not a bot"*, and when it does, no format is listed and the menu never appears. It keys on the network address, not on the bot. A home connection usually gets through, and often clears on its own after a while; a shared server or a fresh VPS address is the worst case.
+
+When it happens, sign in to YouTube in a browser on the machine running the bot and point the bot at it:
+
+```
+YT_COOKIES=chrome
+```
+
+`edge`, `firefox`, `brave`, `chromium`, `opera`, `safari` and `vivaldi` also work, as does `firefox:container` for a named container, and a path to an exported `cookies.txt`. Leaving it empty is fine as long as YouTube is not challenging you.
 
 ## Setup
 
