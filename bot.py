@@ -385,8 +385,11 @@ async def main():
         try:
             await ev.edit(T['downloading'])
             path = await asyncio.to_thread(yt_download, vid, choice, folder, title)
-            await bot.send_file(ev.chat_id, path, force_document=True)  # as a file, so the extension the
-            # owner picked is the one they get; the name on disk is already the video's title
+            is_video = os.path.splitext(path)[1].lower() in (".mp4", ".mkv", ".webm")
+            # a video goes out streamable, so it arrives with a preview and plays inline; audio stays a
+            # plain file, so the extension the owner picked is the one they get. The name on disk is the
+            # video's title, because Telethon takes the name off the path it is given
+            await bot.send_file(ev.chat_id, path, force_document=not is_video, supports_streaming=is_video)
             await ev.delete()
         except Exception as e:
             await ev.edit(f"{T['error']}\n{yt_error(e)}")

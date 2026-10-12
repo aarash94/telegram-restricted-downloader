@@ -10,7 +10,7 @@ One Python file, ~400 lines, no database, no web server.
 
 - 🧱 **Reads Telegram's new rich posts.** Since 2026 some channels publish block-based posts (the Instant View format). Their classic text and media fields are empty, so every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
 - 📸 **Instagram posts and reels.** Every photo and video arrives as one album, caption included. No Instagram account needed for public posts.
-- ▶️ **YouTube, with a menu.** Paste a link and the bot replies with one button per option, each labelled with quality, extension and size. Tap one and the file arrives, named after the video.
+- ▶️ **YouTube, with a menu.** Paste a link and the bot replies with one button per option, each labelled with quality, extension and size. Tap one and the file arrives, named after the video, as a playable video with a preview.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
 - 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
@@ -66,6 +66,8 @@ Rick Astley - Never Gonna Give You Up  ·  3:33
 Every video option is `.mp4`, made by pairing YouTube's H.264 stream with its best m4a audio and muxing them, because mp4 is the one container every phone and browser plays. Audio options are that same best audio re-encoded to mp3.
 
 The sizes are real figures from YouTube's own metadata rather than an estimate, so what a button promises is what lands in the chat, and the delivered file keeps the name of the video.
+
+A video button sends the result as a video, with its thumbnail and a play button, so it streams in the chat instead of arriving as a file to open. An audio button sends a document, which is what keeps `mp3` as the extension rather than Telegram renaming it.
 
 ### Settings
 
