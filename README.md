@@ -67,7 +67,7 @@ Every video option is `.mp4`, made by pairing YouTube's H.264 stream with its be
 
 The sizes are real figures from YouTube's own metadata rather than an estimate, so what a button promises is what lands in the chat, and the delivered file keeps the name of the video.
 
-A video button sends the result as a video, with its thumbnail and a play button, so it streams in the chat instead of arriving as a file to open. An audio button sends a document, which is what keeps `mp3` as the extension rather than Telegram renaming it.
+A video button sends the result as a video, with its thumbnail and a play button, so it streams in the chat instead of arriving as a file to open. An audio button sends a document, which is what keeps `mp3` as the extension rather than Telegram renaming it. Either way the title rides along as the caption.
 
 ### Settings
 

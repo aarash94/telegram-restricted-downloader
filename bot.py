@@ -388,8 +388,10 @@ async def main():
             is_video = os.path.splitext(path)[1].lower() in (".mp4", ".mkv", ".webm")
             # a video goes out streamable, so it arrives with a preview and plays inline; audio stays a
             # plain file, so the extension the owner picked is the one they get. The name on disk is the
-            # video's title, because Telethon takes the name off the path it is given
-            await bot.send_file(ev.chat_id, path, force_document=not is_video, supports_streaming=is_video)
+            # video's title, because Telethon takes the name off the path it is given, and the title is
+            # also the caption: parse_mode=None keeps the *stars* and _underscores_ it may carry literal
+            await bot.send_file(ev.chat_id, path, caption=(title or "").strip()[:1024] or None,
+                                parse_mode=None, force_document=not is_video, supports_streaming=is_video)
             await ev.delete()
         except Exception as e:
             await ev.edit(f"{T['error']}\n{yt_error(e)}")
