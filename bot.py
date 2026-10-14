@@ -345,7 +345,12 @@ async def main():
                     info += f"/{type(msg.media.webpage).__name__}"
                 if not msg.message:
                     return await ev.reply(f"{T['empty']} {info}\n\n{msg.stringify()[:3000]}")
-                await ev.reply(msg.message, formatting_entities=msg.entities)
+                text = msg.message or ""
+                if len(text) <= 4096:
+                    await ev.reply(text, formatting_entities=msg.entities)
+                else:  # Telegram caps one message at 4096 chars; split so long posts do not crash
+                    for i in range(0, len(text), 4000):
+                        await ev.reply(text[i:i + 4000])
             else:
                 note = await ev.reply(T['downloading'])
                 path = await user.download_media(msg, "dl/")
@@ -358,13 +363,18 @@ async def main():
                                         formatting_entities=msg.entities if fits else None,
                                         attributes=doc.attributes if doc else None)
                     if not fits:
-                        await ev.reply(msg.message, formatting_entities=msg.entities)
+                        text = msg.message or ""
+                        if len(text) <= 4096:
+                            await ev.reply(text, formatting_entities=msg.entities)
+                        else:  # the part after the 1024-char caption limit can still be huge; split it
+                            for i in range(0, len(text), 4000):
+                                await ev.reply(text[i:i + 4000])
                 finally:
                     os.remove(path)
                     await note.delete()
             await ev.respond(T['next'])
         except Exception as e:  # surface every failure to the owner instead of only the log
-            await ev.reply(f"{T['error']}\n{type(e).__name__}: {e}")
+            await ev.reply(f"{T['error']}\n{type(e).__name__}: {str(e)[:3000]}")
 
     @bot.on(events.CallbackQuery(func=lambda e: (e.data or b"").startswith(b"yt:")))
     async def yt_pick(ev):
