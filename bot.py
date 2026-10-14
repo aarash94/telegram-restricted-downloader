@@ -402,7 +402,7 @@ async def main():
             # mp3 has to leave as a document so the extension survives, but it still needs its audio
             # attribute (duration + title) or Telegram shows an unplayable file with a download button
             # instead of the inline player. Videos stream; audio keeps its name and just gets its tags.
-            attrs = ([DocumentAttributeAudio(duration=float(duration or 0),
+            attrs = ([DocumentAttributeAudio(duration=int(duration or 0),
                                             title=(title or "").strip() or None, voice=False)]
                      if is_audio else None)
             mime = "audio/mpeg" if os.path.splitext(path)[1].lower() == ".mp3" else None
