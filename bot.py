@@ -399,15 +399,14 @@ async def main():
             path = await asyncio.to_thread(yt_download, vid, choice, folder, title)
             is_video = os.path.splitext(path)[1].lower() in (".mp4", ".mkv", ".webm")
             is_audio = os.path.splitext(path)[1].lower() in (".mp3", ".m4a", ".ogg", ".opus", ".flac", ".wav", ".aac")
-            # mp3 has to leave as a document so the extension survives, but it still needs its audio
-            # attribute (duration + title) or Telegram shows an unplayable file with a download button
-            # instead of the inline player. Videos stream; audio keeps its name and just gets its tags.
+            # audio goes out with its audio attribute (duration + title) and no force_file, otherwise
+            # Telegram shows a plain file with a download button instead of the inline player
             attrs = ([DocumentAttributeAudio(duration=int(duration or 0),
                                             title=(title or "").strip() or None, voice=False)]
                      if is_audio else None)
             mime = "audio/mpeg" if os.path.splitext(path)[1].lower() == ".mp3" else None
             await bot.send_file(ev.chat_id, path, caption=(title or "").strip()[:1024] or None,
-                                parse_mode=None, force_document=not is_video, supports_streaming=is_video,
+                                parse_mode=None, supports_streaming=is_video,
                                 attributes=attrs, mime_type=mime)
             await ev.delete()
         except Exception as e:
