@@ -10,7 +10,7 @@ import instaloader
 import yt_dlp
 from PIL import Image
 from telethon import Button, TelegramClient, events
-from telethon.tl.types import Document, MessageMediaWebPage
+from telethon.tl.types import Document, DocumentAttributeAudio, MessageMediaWebPage
 
 try:
     import imageio_ffmpeg  # ships an ffmpeg binary in site-packages, so hosts need no separate ffmpeg install
@@ -290,7 +290,7 @@ async def main():
                     if not choices:
                         return await note.edit(T['yt_none'])
                     token = os.urandom(6).hex()  # callback_data is capped at 64 bytes, so keep only a token
-                    YT_PENDING[token] = (ev.chat_id, vid, info.get("title"), choices)
+                    YT_PENDING[token] = (ev.chat_id, vid, info.get("title"), choices, info.get("duration"))
                     await note.edit(T['yt_pick'].format(yt_name(info.get("title"), "").rstrip("."),
                                                         human_time(info.get("duration")), len(choices)),
                                 buttons=[[Button.inline(c[0], data=f"yt:{token}:{i}")] for i, c in enumerate(choices)],
@@ -370,7 +370,9 @@ async def main():
     async def yt_pick(ev):
         try:  # callback data arrives as bytes from Telethon, unlike the message text above
             _, token, index = ev.data.decode().split(":")
-            chat, vid, title, choices = YT_PENDING[token]
+            pending = YT_PENDING[token]
+            chat, vid, title, choices = pending[:4]  # duration may be present in newer entries
+            duration = pending[4] if len(pending) > 4 else None
         except (ValueError, KeyError):  # token expired or the menu was never registered
             return await ev.answer(T['yt_expired'], alert=True)
         if chat != ev.chat_id or ev.sender_id not in allowed:
@@ -386,12 +388,17 @@ async def main():
             await ev.edit(T['downloading'])
             path = await asyncio.to_thread(yt_download, vid, choice, folder, title)
             is_video = os.path.splitext(path)[1].lower() in (".mp4", ".mkv", ".webm")
-            # a video goes out streamable, so it arrives with a preview and plays inline; audio stays a
-            # plain file, so the extension the owner picked is the one they get. The name on disk is the
-            # video's title, because Telethon takes the name off the path it is given, and the title is
-            # also the caption: parse_mode=None keeps the *stars* and _underscores_ it may carry literal
+            is_audio = os.path.splitext(path)[1].lower() in (".mp3", ".m4a", ".ogg", ".opus", ".flac", ".wav", ".aac")
+            # mp3 has to leave as a document so the extension survives, but it still needs its audio
+            # attribute (duration + title) or Telegram shows an unplayable file with a download button
+            # instead of the inline player. Videos stream; audio keeps its name and just gets its tags.
+            attrs = ([DocumentAttributeAudio(duration=float(duration or 0),
+                                            title=(title or "").strip() or None, voice=False)]
+                     if is_audio else None)
+            mime = "audio/mpeg" if os.path.splitext(path)[1].lower() == ".mp3" else None
             await bot.send_file(ev.chat_id, path, caption=(title or "").strip()[:1024] or None,
-                                parse_mode=None, force_document=not is_video, supports_streaming=is_video)
+                                parse_mode=None, force_document=not is_video, supports_streaming=is_video,
+                                attributes=attrs, mime_type=mime)
             await ev.delete()
         except Exception as e:
             await ev.edit(f"{T['error']}\n{yt_error(e)}")
