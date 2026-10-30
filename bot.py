@@ -38,7 +38,8 @@ IG = re.compile(r"instagram\.com/(?:[\w.]+/)?(?:p|reels?|tv)/([\w-]+)")
 # youtube.com/watch?v=ID, youtu.be/ID, /shorts/ID, /live/ID, /embed/ID; ?t= &list= trailing junk ok
 YT = re.compile(r"(?:youtube\.com/(?:watch\?(?:[^&\s]*&)*v=|shorts/|live/|embed/|v/)|youtu\.be/)([\w-]{11})")
 IG_LOADER = instaloader.Instaloader(dirname_pattern="dl/{target}", save_metadata=False, download_video_thumbnails=False,
-                                    post_metadata_txt_pattern="", quiet=True)  # media files only, nothing else
+                                    post_metadata_txt_pattern="", quiet=True, max_connection_attempts=1,
+                                    request_timeout=30, fatal_status_codes=[401, 403, 429])
 YT_MAX_H = int(os.environ.get("YT_MAX_H", 1080))  # highest video button offered
 YT_AUDIO_KBPS = [int(x) for x in os.environ.get("YT_AUDIO_KBPS", "128,192,320").split(",") if x.strip()]
 # yt-dlp picks tv_downgraded whenever cookies are present, and YouTube currently rejects that client with
@@ -79,7 +80,25 @@ def ig_parse(text):
 
 def ig_download(code):
     """Blocking: download every photo/video of an Instagram post into dl/<code>/; return (folder, caption)."""
-    post = instaloader.Post.from_shortcode(IG_LOADER.context, code)
+    username = os.environ.get("IG_USERNAME", "").strip()
+    if username and not IG_LOADER.context.is_logged_in:
+        session = os.environ.get("IG_SESSIONFILE", "").strip().strip('"')
+        session = os.path.join(HERE, os.path.expanduser(session)) if session else None
+        try:
+            IG_LOADER.load_session_from_file(username, session)
+        except FileNotFoundError as e:
+            raise RuntimeError(T['ig_session_missing']) from e
+    if IG_LOADER.context.is_logged_in:
+        # Use the authenticated media endpoint, avoiding the GraphQL query that
+        # Instagram refuses with 401 even for some signed-in sessions.
+        mediaid = instaloader.Post.shortcode_to_mediaid(code)
+        data = IG_LOADER.context.get_iphone_json(f"api/v1/media/{mediaid}/info/", {})
+        items = data.get("items") or []
+        if not items:
+            raise instaloader.BadResponseException("Instagram returned no media for this post.")
+        post = instaloader.Post.from_iphone_struct(IG_LOADER.context, items[0])
+    else:
+        post = instaloader.Post.from_shortcode(IG_LOADER.context, code)
     IG_LOADER.download_post(post, target=code)
     folder = os.path.join("dl", code)
     for f in os.listdir(folder):  # Instagram serves newer pictures as webp, which Telegram shows as a sticker/file
@@ -87,6 +106,15 @@ def ig_download(code):
             Image.open(os.path.join(folder, f)).convert("RGB").save(os.path.join(folder, f[:-5] + ".jpg"), quality=95)
             os.remove(os.path.join(folder, f))
     return folder, post.caption or ""
+
+
+def ig_error(e):
+    msg = str(e)
+    if isinstance(e, (instaloader.ConnectionException, instaloader.LoginRequiredException,
+                      instaloader.AbortDownloadException, instaloader.QueryReturnedForbiddenException)) and any(
+            s in msg.lower() for s in ("401", "403", "429", "please wait", "login", "checkpoint", "challenge", "feedback_required")):
+        return T['ig_blocked']
+    return f"{type(e).__name__}: {msg[:3000]}"
 
 
 def yt_parse(text):
@@ -374,7 +402,8 @@ async def main():
                     await note.delete()
             await ev.respond(T['next'])
         except Exception as e:  # surface every failure to the owner instead of only the log
-            await ev.reply(f"{T['error']}\n{type(e).__name__}: {str(e)[:3000]}")
+            error = ig_error(e) if code else f"{type(e).__name__}: {str(e)[:3000]}"
+            await ev.reply(f"{T['error']}\n{error}")
 
     @bot.on(events.CallbackQuery(func=lambda e: (e.data or b"").startswith(b"yt:")))
     async def yt_pick(ev):

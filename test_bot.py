@@ -35,6 +35,112 @@ assert ig_parse("instagram.com/reels/C1a2B3c4D5e") == "C1a2B3c4D5e"
 assert ig_parse("https://www.instagram.com/someuser/p/C1a2B3c4D5e/") == "C1a2B3c4D5e"
 assert ig_parse("https://www.instagram.com/stories/someuser/123/") is None
 assert ig_parse("https://t.me/cats/7") is None
+
+# A saved Instagram login must download photos, reels and mixed albums even when
+# the anonymous GraphQL endpoint rejects the request. Only network I/O is replaced.
+import copy
+from io import BytesIO
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+import instaloader
+import requests
+import bot
+
+media = {
+    "pk": "4009085925228593700", "code": "DejImhvRMIk", "media_type": 1,
+    "taken_at": 1730000000, "caption": {"text": "A caption #with_tags"},
+    "has_liked": False, "like_count": 3, "comment_count": 0,
+    "image_versions2": {"candidates": [{"url": "https://cdn.example/photo.jpg"}]},
+    "user": {"pk": "123", "username": "example", "is_private": False,
+             "full_name": "Example", "profile_pic_url": "https://cdn.example/avatar.jpg"},
+}
+reel = {**media, "media_type": 2, "video_duration": 3.0, "view_count": 1,
+        "video_versions": [{"url": "https://cdn.example/video.mp4"}]}
+album = {**media, "media_type": 8, "carousel_media": [media, reel]}
+blocked = instaloader.ConnectionException(
+    'JSON Query to graphql/query: 401 Unauthorized - "fail" status, '
+    'message "Please wait a few minutes before you try again."')
+
+def ig_response(url):
+    assert url in ("https://cdn.example/photo.jpg", "https://cdn.example/video.mp4"), url
+    response = requests.Response()
+    response.status_code = 200
+    response.raw = BytesIO(b"downloaded media")
+    return response
+
+old_cwd = os.getcwd()
+with TemporaryDirectory() as tmp:
+    session = os.path.join(tmp, "instagram.session")
+    saved = instaloader.Instaloader(quiet=True)
+    saved.load_session("example", {"csrftoken": "test", "sessionid": "test", "ds_user_id": "123"})
+    saved.save_session_to_file(session)
+    saved.close()
+    try:
+        os.chdir(tmp)
+        for data, extensions in ((media, [".jpg"]), (reel, [".mp4"]), (album, [".jpg", ".mp4"])):
+            loader = instaloader.Instaloader(dirname_pattern="dl/{target}", save_metadata=False,
+                                            download_video_thumbnails=False, post_metadata_txt_pattern="", quiet=True)
+            def ig_info(path, params):
+                assert path == "api/v1/media/4009085925228593700/info/", path
+                assert params == {}, params
+                assert loader.context.is_logged_in, "media query must use the saved login"
+                return {"items": [copy.deepcopy(data)]}
+
+            with patch.object(bot, "IG_LOADER", loader), patch.object(bot, "HERE", tmp), \
+                    patch.dict(os.environ, IG_USERNAME="example", IG_SESSIONFILE="instagram.session"), \
+                    patch.object(loader.context, "doc_id_graphql_query", side_effect=blocked), \
+                    patch.object(loader.context, "get_iphone_json", side_effect=ig_info), \
+                    patch.object(loader.context, "get_raw", side_effect=ig_response):
+                try:
+                    folder, caption = bot.ig_download("DejImhvRMIk")
+                except instaloader.ConnectionException as e:
+                    raise AssertionError("Saved Instagram login still uses the rejected GraphQL query") from e
+                assert caption == "A caption #with_tags", caption
+                files = sorted(os.listdir(folder))
+                assert sorted(os.path.splitext(f)[1] for f in files) == extensions, files
+                assert all(open(os.path.join(folder, f), "rb").read() == b"downloaded media" for f in files)
+                import shutil
+                shutil.rmtree(folder)
+            loader.close()
+    finally:
+        os.chdir(old_cwd)
+
+# Missing session files must offer setup instructions without making anonymous requests.
+with patch.dict(os.environ, IG_USERNAME="example", IG_SESSIONFILE="/missing/instagram.session"):
+    try:
+        bot.ig_download("DejImhvRMIk")
+        raise AssertionError("A configured but missing Instagram session must be reported")
+    except RuntimeError as e:
+        assert "instaloader --login" in str(e) and "IG_SESSIONFILE" in str(e), e
+
+# Without a configured session, public posts still use the anonymous path.
+with patch.dict(os.environ, IG_USERNAME="", IG_SESSIONFILE=""), \
+        patch.object(bot.IG_LOADER.context, "doc_id_graphql_query", side_effect=blocked):
+    try:
+        bot.ig_download("DejImhvRMIk")
+        raise AssertionError("The rejected anonymous query must fail")
+    except instaloader.ConnectionException as e:
+        message = bot.ig_error(e)
+        assert "IG_USERNAME" in message and "graphql/query" not in message, message
+assert bot.ig_error(ValueError("unrelated failure")) == "ValueError: unrelated failure"
+assert "IG_USERNAME" in bot.ig_error(instaloader.QueryReturnedForbiddenException("403 Forbidden"))
+assert "IG_USERNAME" in bot.ig_error(instaloader.AbortDownloadException("feedback_required"))
+
+# Refused requests must abort on the first response, without sleeping through retries.
+for status in (401, 403, 429):
+    response = requests.Response()
+    response.status_code = status
+    response._content = b'{"status":"fail","message":"Please wait a few minutes before you try again."}'
+    with patch.object(bot.IG_LOADER.context._session, "get", return_value=response) as get, \
+            patch.object(bot.IG_LOADER.context, "do_sleep"), \
+            patch.object(bot.IG_LOADER.context._rate_controller, "wait_before_query"):
+        try:
+            bot.IG_LOADER.context.get_json("graphql/query", {})
+            raise AssertionError(f"HTTP {status} should stop Instagram requests")
+        except instaloader.AbortDownloadException as e:
+            assert "IG_USERNAME" in bot.ig_error(e), e
+        assert get.call_count == 1, get.call_count
+
 from bot import yt_parse, yt_choices, yt_name, human_size, human_time
 assert yt_parse("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
 assert yt_parse("https://youtu.be/dQw4w9WgXcQ?t=43") == "dQw4w9WgXcQ"

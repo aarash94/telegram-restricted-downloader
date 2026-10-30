@@ -9,7 +9,7 @@ One Python file, ~400 lines, no database, no web server.
 ## What it does
 
 - 🧱 **Reads Telegram's new rich posts.** Since 2026 some channels publish block-based posts (the Instant View format). Their classic text and media fields are empty, so every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
-- 📸 **Instagram posts and reels.** Every photo and video arrives as one album, caption included. No Instagram account needed for public posts.
+- 📸 **Instagram posts and reels.** Every photo and video arrives as one album, caption included. Public posts work anonymously when Instagram permits it; a saved login can be used when it refuses anonymous requests.
 - ▶️ **YouTube, with a menu.** Paste a link and the bot replies with one button per option, each labelled with quality, extension and size. Tap one and the file arrives, named after the video, as a playable video with a preview.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
@@ -43,9 +43,36 @@ https://www.youtube.com/shorts/ID         same, Shorts
 https://www.youtube.com/live/ID           same, a past live stream
 ```
 
-Instagram stories, highlights and private accounts are not supported. Instagram rate-limits anonymous downloads and may block a server's address for a while after too many requests, so leave a minute between links and wait if it starts failing.
+Instagram stories and highlights are not supported. Instagram may limit downloads even for public posts. See [Instagram login](#instagram-login) if it returns `401 Unauthorized` or *"Please wait a few minutes before you try again."*
 
 Playlists are not supported on YouTube: only the single video in the link is offered.
+
+## Instagram login
+
+The bot uses anonymous requests by default. If Instagram refuses them, create a saved session on the machine running the bot, using the same Python environment as the bot:
+
+```sh
+python -m instaloader --login YOUR_USERNAME
+```
+
+Replace `YOUR_USERNAME` with your Instagram username. Follow the password and two-factor prompts, then add this to `.env` and restart the bot:
+
+```env
+IG_USERNAME=YOUR_USERNAME
+```
+
+The bot reads Instaloader's saved session and uses its authenticated media endpoint instead of the GraphQL query that returned the error. It does not ask for your Instagram password in Telegram or store it in `.env`. Private posts require the signed-in account to have access.
+
+Leave `IG_SESSIONFILE` empty to use Instaloader's default session location. For a bot running under a different OS account, copy your own session file to the bot's machine and set `IG_SESSIONFILE` to its path. Relative paths are resolved beside `bot.py`. Session files grant account access; keep them private and out of version control (names ending in `.session` are already ignored).
+
+If command-line login fails, Instaloader also supports [importing a browser session](https://instaloader.github.io/cli-options.html#login-download-private-profiles). For example, with Instagram signed in to Firefox on that machine:
+
+```sh
+python -m pip install browser-cookie3
+python -m instaloader --load-cookies firefox
+```
+
+Set `IG_USERNAME` to the username reported by that command. Instagram can still restrict an account or network address; pause requests and complete any checkpoint in the browser before renewing the session. The bot stops on HTTP 401/403/429 instead of repeatedly retrying a refused request.
 
 ## YouTube
 
@@ -122,6 +149,7 @@ The bot turns the failures it knows about into plain sentences rather than passi
 | What you see | What is actually wrong |
 | --- | --- |
 | *"Sign in to confirm you're not a bot"* | YouTube is challenging the address. Set `YT_COOKIES`. |
+| Instagram `401 Unauthorized` / *"Please wait a few minutes"* | Instagram refused the request. Pause downloads and configure a saved session via `IG_USERNAME`; see [Instagram login](#instagram-login). If already configured, check the account in a browser and renew its session. |
 | *"Failed to decrypt with DPAPI"* | A Chromium browser was named on Windows. Export a `cookies.txt`, or use Firefox. |
 | *"The page needs to be reloaded"* | With cookies set, yt-dlp asks for a player YouTube is refusing ([yt-dlp#16212](https://github.com/yt-dlp/yt-dlp/issues/16212), [#17389](https://github.com/yt-dlp/yt-dlp/issues/17389)). Adjust `YT_CLIENTS`. |
 | *"Requested format is not available"* | The challenge solver is missing, or there is no JS runtime. Run `pip install -U "yt-dlp[default]"` and check `YT_JS_RUNTIME`. |
@@ -138,6 +166,8 @@ Everything lives in `.env` next to `bot.py`. See `.env.example` for the full lis
 | `BOT_TOKEN` | — | From @BotFather. Required. |
 | `OWNER` | *(empty)* | Comma-separated Telegram ids allowed to use the bot. Empty means only the account you logged in with. Anyone not on the list who messages the bot is shown their own id, which is the easy way to collect ids from people you want to add. |
 | `BOT_LANG` | `en` | Reply language, a file name in `i18n/`. |
+| `IG_USERNAME` | *(empty)* | Instagram username for a session created with `python -m instaloader --login USERNAME`. Empty means anonymous requests. |
+| `IG_SESSIONFILE` | *(empty)* | Saved Instagram session file. Empty uses Instaloader's default location; relative paths start beside `bot.py`. |
 
 ## Keep it running
 
@@ -176,7 +206,7 @@ If a Telegram post type the bot does not understand comes back, it replies with 
 python test_bot.py
 ```
 
-Plain asserts, no test framework, and it needs nothing from the network. The YouTube format menu is built from a captured format list so the size labels, codec preference and height cap can all be checked offline.
+Plain asserts, no test framework, and it needs nothing from the network. Instagram photos, reels and mixed albums are checked with a saved test session and simulated network responses, including refused requests. The YouTube format menu is built from a captured format list so the size labels, codec preference and height cap can all be checked offline.
 
 `IG_TEST=<shortcode> python test_bot.py` additionally downloads that Instagram post for real.
 
@@ -184,7 +214,7 @@ Plain asserts, no test framework, and it needs nothing from the network. The You
 
 Two Telethon clients run in one process. Your own account (a user session) fetches the Telegram message and, if needed, downloads the media. The bot re-sends it to you. Bots cannot read arbitrary chats or copy out of protected ones, which is why the user session is required. For private chats the fetching account must already be a member.
 
-Instagram posts are fetched anonymously with instaloader, so no Instagram login is involved. YouTube links are read with yt-dlp, which needs no login unless YouTube's challenge forces the question.
+Instagram posts are fetched with instaloader: anonymously by default, or through its authenticated media endpoint when `IG_USERNAME` names a saved session. YouTube links are read with yt-dlp, which needs no login unless YouTube's challenge forces the question.
 
 The YouTube menu is the only stateful part: an open menu is held in memory under a random token, the buttons carry only that token, and a choice is good once. Formats are selected by a height-bound filter rather than by id, so a format list that differs from the one behind the menu still resolves to something playable.
 

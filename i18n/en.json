@@ -8,6 +8,8 @@
   "next": "Done ✅\nSend the next link.",
   "error": "Error ❌",
   "private": "This bot is private.\nYour id: {}",
+  "ig_session_missing": "Instagram's saved session was not found. On the machine running the bot, run:\npython -m instaloader --login YOUR_USERNAME\n\nSet IG_USERNAME=YOUR_USERNAME in .env and restart the bot. If you set IG_SESSIONFILE, it must point to that session file; leave it empty to use Instaloader's default location.",
+  "ig_blocked": "Instagram is refusing this request or limiting downloads. Repeated attempts may prolong the block; wait before trying again.\n\nTo use a signed-in session, run on the machine running the bot:\npython -m instaloader --login YOUR_USERNAME\n\nThen set IG_USERNAME=YOUR_USERNAME in .env and restart the bot. If a session is already configured, open Instagram in a browser, complete any login/checkpoint prompt, then renew the saved session. A signed-in session cannot guarantee that Instagram lifts a network or account restriction.",
   "yt_fetching": "Looking up the available formats… ⏳",
   "yt_pick": "{}  ·  {}\n\nPick what to download ({} options below):",
   "yt_none": "I could not find any downloadable format for this video.",
