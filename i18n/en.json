@@ -1,5 +1,5 @@
 {
-  "welcome": "Hi! 👋\nSend me a Telegram message link and I will send that message back to you.\nWorks even for channels where saving and forwarding are disabled.\nInstagram post and reel links work too.\nYouTube links work as well: pick the quality or audio only.\nSpotify track links return matching audio from YouTube.\nX/Twitter post links return videos and GIFs.",
+  "welcome": "Hi! 👋\nSend me a Telegram message link and I will send that message back to you.\nWorks even for channels where saving and forwarding are disabled.\nInstagram post and reel links work too.\nYouTube links work as well: pick the quality or audio only.\nSpotify track links return matching audio from YouTube.\nX/Twitter post links return photos, videos, GIFs and text.",
   "bad_link": "That is not a valid link. Send a Telegram message link, an Instagram post link or a YouTube link, for example:\nhttps://t.me/channel/123\nhttps://www.instagram.com/p/CODE/\nhttps://youtu.be/VIDEOID\nhttps://open.spotify.com/track/TRACKID\nhttps://x.com/username/status/123",
   "not_found": "Message not found. Is the account a member of that chat?",
   "downloading": "Downloading… ⏳",
@@ -21,5 +21,5 @@
   "yt_noejs": "YouTube's \"n challenge\" could not be solved, so every stream arrives without a URL and yt-dlp can only offer storyboard images.\n\nThis needs the challenge-solver scripts, which do not come with a plain yt-dlp install:\n   pip install -U \"yt-dlp[default]\"\n\nthen restart the bot. A JS runtime (deno or node) is also required, via YT_JS_RUNTIME or PATH.",
   "spotify_install": "Spotify support requires spotDL. On the bot machine, run pip install -r requirements.txt with Python 3.11 or newer, then restart the bot.",
   "spotify_none": "No matching audio could be downloaded for this Spotify track. Try a YouTube link or check the bot log for the download error.",
-  "x_none": "No downloadable video or GIF was found in this X post. Photo-only and text-only posts are not supported."
+  "x_none": "This X post is unavailable, empty, or its media could not be downloaded. If it requires login, configure X_COOKIES for an account that can access it."
 }

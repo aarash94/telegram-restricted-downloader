@@ -1,6 +1,6 @@
 # telegram-restricted-downloader
 
-**Telegram, Instagram, YouTube, Spotify and X downloader, as a Telegram bot.** Paste a link, get it back: Telegram messages including channels and groups that block saving and forwarding, Instagram posts and reels, YouTube videos or audio in the quality you pick, Spotify tracks matched to YouTube audio, and X videos/GIFs.
+**Telegram, Instagram, YouTube, Spotify and X downloader, as a Telegram bot.** Paste a link, get it back: Telegram messages including channels and groups that block saving and forwarding, Instagram posts and reels, YouTube videos or audio in the quality you pick, Spotify tracks matched to YouTube audio, and X photos, videos/GIFs or text.
 
 One Python file, no database, no web server.
 
@@ -12,7 +12,7 @@ One Python file, no database, no web server.
 - 📸 **Instagram posts and reels.** Every photo and video arrives as one album, caption included. Public posts work anonymously when Instagram permits it; a saved login can be used when it refuses anonymous requests.
 - ▶️ **YouTube, with a menu.** Paste a link and the bot replies with one button per option, each labelled with quality, extension and size. Tap one and the file arrives, named after the video, as a playable video with a preview.
 - 🎵 **Spotify tracks.** Paste a track link and get matching YouTube audio as M4A, with Spotify title, artist, album and cover art. AAC sources are kept without re-encoding; this does not download Spotify's own audio.
-- ✖️ **X/Twitter videos and GIFs.** All videos from the linked post arrive together, with its caption. No extra downloader dependency is needed.
+- ✖️ **X/Twitter posts.** Photos, videos and GIFs arrive together with the post text. Text-only posts arrive as ordinary messages. No extra downloader dependency is needed.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
 - 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
@@ -46,7 +46,7 @@ https://www.youtube.com/live/ID           same, a past live stream
 https://open.spotify.com/track/TRACKID    Spotify track, matching audio from YouTube
 https://open.spotify.com/intl-en/track/TRACKID  same, locale-prefixed link
 spotify:track:TRACKID                    same, Spotify URI
-https://x.com/username/status/123         X post, all videos and GIFs
+https://x.com/username/status/123         X post, photos, videos/GIFs and text
 https://twitter.com/username/status/123   same, legacy Twitter link
 ```
 
@@ -64,7 +64,9 @@ Spotify requires no additional settings. The existing `YT_COOKIES`, `YT_CLIENTS`
 
 ## X / Twitter
 
-Send an `x.com` or `twitter.com` post link. The bot downloads every video/GIF in that post at the best available combined MP4 quality, with no format-menu round trip or video conversion. It sends multiple videos as an album. Photo-only posts, text-only posts, profiles and Spaces are not supported.
+Send an `x.com` or `twitter.com` post link. The bot returns original-size photos and the best available combined MP4 videos/GIFs in attachment order, with the post text. Mixed media is sent as an album. WebP pictures are converted to JPEG so Telegram shows photos instead of stickers. Text-only posts arrive as ordinary messages, and long post text is split into messages. There is no format-menu round trip or video conversion. Profiles and Spaces are not supported.
+
+The bot reuses yt-dlp's authenticated X status fetch before its video-only filtering, so photo and text posts do not trigger a "No video could be found" error. That integration also preserves long-post text from X's note-tweet field. No additional scraper, API key or third-party mirror is needed.
 
 Public posts are attempted without login. For a post requiring access from your own account, set `X_COOKIES` to an exported cookies file or a browser name, using the same syntax as `YT_COOKIES`, then restart:
 
@@ -238,9 +240,11 @@ python test_downloaders.py
 
 Plain asserts, no test framework, and it needs nothing from the network. Instagram photos, reels and mixed albums are checked with a saved test session and simulated network responses, including refused requests. The YouTube format menu is built from a captured format list so the size labels, codec preference and height cap can all be checked offline.
 
-Spotify/X checks cover link validation, client reuse, multi-video posts and upload-failure cleanup. A short generated AAC fixture exercises the real yt-dlp download/postprocessing and spotDL metadata pipeline across separate worker threads, verifies its tags and confirms AAC is not re-encoded. Only network operations are replaced.
+Spotify/X checks cover link validation, client reuse, photo/text/long-note posts, multi-video posts and upload-failure cleanup. A short generated AAC fixture exercises the real yt-dlp download/postprocessing and spotDL metadata pipeline across separate worker threads, verifies its tags and confirms AAC is not re-encoded. Only network operations are replaced.
 
 `IG_TEST=<shortcode> python test_bot.py` additionally downloads that Instagram post for real.
+
+`X_TEST=https://x.com/username/status/ID python test_downloaders.py` additionally fetches that X post for real and checks that it returns media or text; its temporary downloads are removed afterward.
 
 ## How it works
 

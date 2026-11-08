@@ -1,7 +1,7 @@
 """Personal Telegram bot: send it a t.me link, get the message back (restricted or not).
 Send it an Instagram post or reel link, get every photo and video in it.
 Send it a YouTube link, pick video quality or audio only, get the file back.
-Spotify track links return matching YouTube audio; X links return videos and GIFs.
+Spotify track links return matching YouTube audio; X links return photos, videos/GIFs and text.
 
 Your own account (user session) fetches + downloads; the bot re-sends to you.
 First run asks for your phone + login code once, then sessions are saved to *.session files.
@@ -9,10 +9,12 @@ First run asks for your phone + login code once, then sessions are saved to *.se
 import asyncio, json, os, re, shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from html import unescape
 import instaloader
 import yt_dlp
+from yt_dlp.extractor.twitter import TwitterIE
 from PIL import Image
-from telethon import Button, TelegramClient, events
+from telethon import Button, TelegramClient, events, utils
 from telethon.tl.types import Document, DocumentAttributeAudio, MessageMediaWebPage
 
 try:
@@ -347,25 +349,82 @@ def spotify_download(url, folder):
     return str(path), song.name, ", ".join(song.artists or []), song.duration
 
 
+class XPostExtractor(TwitterIE):
+    """Preserve long-post text that yt-dlp's video metadata conversion discards."""
+    def _graphql_to_legacy(self, data, twid):
+        status = super()._graphql_to_legacy(data, twid)
+        result = (data.get("tweetResult") or {}).get("result") or {}
+        result = result.get("tweet") or result  # visibility-wrapped posts
+        note = ((result.get("note_tweet") or {}).get("note_tweet_results") or {}).get("result") or {}
+        if note.get("text"):
+            status["full_text"] = note["text"]
+        return status
+
+
 def x_download(url, folder):
-    """Blocking: download every video/GIF of one post, preserving post order."""
+    """Blocking: fetch one X post once, keeping its text and every attached photo/video."""
     opts = {"quiet": True, "no_warnings": True, "noprogress": True,
             "noplaylist": False, "format": "b[ext=mp4]/b", "socket_timeout": 30,
             "retries": 1, "fragment_retries": 1, "concurrent_fragment_downloads": 1,
             "outtmpl": os.path.join(folder, "%(autonumber)02d-%(id)s.%(ext)s"),
             **yt_cookies("X_COOKIES"), **yt_ffmpeg()}
     with yt_dlp.YoutubeDL(opts) as y:
-        info = y.extract_info(url, download=True) or {}
-    entries = list(info.get("entries") or [info])
-    files = []
-    for entry in entries:
-        for download in (entry or {}).get("requested_downloads") or []:
-            path = download.get("filepath")
-            if path and path.lower().endswith((".mp4", ".webm", ".mov")) and os.path.isfile(path) and os.path.getsize(path):
+        extractor = XPostExtractor(y)
+        extractor.initialize()
+        twid = url.rsplit("/", 1)[-1]
+        # The public video extractor rejects photos/text. Reuse its authenticated status fetch instead.
+        status = extractor._extract_status(twid)
+        caption = unescape(status.get("full_text") or status.get("text") or "")
+        media = list((status.get("extended_entities") or {}).get("media") or [])
+        quoted = status.get("quoted_status") or {}
+        media.extend((quoted.get("extended_entities") or {}).get("media") or [])
+        card = status.get("card") or {}
+        bindings = card.get("binding_values") or {}
+        if card.get("name", "").split(":")[-1] == "unified_card":
+            unified = json.loads((bindings.get("unified_card") or {}).get("string_value") or "{}")
+            media.extend((unified.get("media_entities") or {}).values())
+        else:
+            vmap = bindings.get("amplify_url_vmap") or bindings.get("player_stream_url") or {}
+            if vmap.get("string_value"):
+                formats, _ = extractor._extract_formats_from_vmap_url(vmap["string_value"], twid)
+                media.append({"type": "video", "formats": formats})
+        files = []
+        for index, item in enumerate(media, 1):
+            if item.get("type") == "photo":
+                photo = item.get("media_url_https") or ""
+                if not photo.startswith("https://pbs.twimg.com/"):
+                    raise RuntimeError(T['x_none'])
+                ext = photo.split("?", 1)[0].rsplit(".", 1)[-1].lower()
+                ext = ext if ext in ("jpg", "jpeg", "png", "webp") else "jpg"
+                path = os.path.join(folder, f"{index:02d}.{ext}")
+                photo = yt_dlp.utils.update_url_query(photo, {"name": "orig"})
+                with y.urlopen(photo) as response, open(path, "wb") as out:
+                    shutil.copyfileobj(response, out, 64 * 1024)
+                if not os.path.getsize(path):
+                    raise RuntimeError(T['x_none'])
+                if ext == "webp":  # Telegram otherwise displays a sticker/file
+                    converted = os.path.join(folder, f"{index:02d}.jpg")
+                    with Image.open(path) as image:
+                        image.convert("RGB").save(converted, quality=95)
+                    os.remove(path)
+                    path = converted
                 files.append(path)
-    if not files:
+            else:
+                video = item.get("video_info") or {}
+                formats = list(item.get("formats") or [])
+                for variant in video.get("variants") or []:
+                    formats.extend(extractor._extract_variant_formats(variant, twid)[0])
+                if not formats:
+                    raise RuntimeError(T['x_none'])
+                info = y.process_ie_result({"id": f"{twid}-{index}", "title": f"X post {twid}",
+                    "extractor": "twitter", "extractor_key": "Twitter", "webpage_url": url,
+                    "duration": (video.get("duration_millis") or 0) / 1000, "formats": formats}, download=True)
+                for download in info.get("requested_downloads") or []:
+                    path = download.get("filepath")
+                    if path and os.path.isfile(path) and os.path.getsize(path):
+                        files.append(path)
+    if not files and not caption:
         raise RuntimeError(T['x_none'])
-    caption = info.get("description") or next((e.get("description") for e in entries if e and e.get("description")), "")
     return files, caption
 
 
@@ -381,11 +440,15 @@ async def send_external(ev, bot, spotify, xurl):
                                                        performer=artist or None, voice=False)], mime_type="audio/mp4")
             else:
                 files, caption = await asyncio.to_thread(x_download, xurl, folder)
-                await bot.send_file(ev.chat_id, files, caption=caption if len(caption) <= 1024 else None,
-                                    parse_mode=None, supports_streaming=True)
-                if len(caption) > 1024:
-                    for i in range(0, len(caption), 4000):
-                        await ev.reply(caption[i:i + 4000], parse_mode=None)
+                fits = len(caption.encode("utf-16-le")) <= 2048
+                if files:
+                    await bot.send_file(ev.chat_id, files, caption=caption if fits else None,
+                                        parse_mode=None, supports_streaming=True)
+                if caption and (not files or not fits):
+                    # The fallback must end after a whole UTF-16 character, never a high surrogate.
+                    for chunk, _ in utils.split_text(caption, [], limit=4000,
+                                                    split_at=(r"\n", r"\s", r"[^\ud800-\udbff]")):
+                        await ev.reply(chunk, parse_mode=None, link_preview=False)
     finally:
         await note.delete()
     await ev.respond(T['next'])

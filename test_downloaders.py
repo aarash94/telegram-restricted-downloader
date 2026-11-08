@@ -1,5 +1,6 @@
 """Offline checks for Spotify/X routing and download boundaries. Run: python test_downloaders.py."""
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -77,18 +78,29 @@ def check_spotify():
 
 def check_x():
     # Multi-video metadata must deliver every completed media file in post order.
+    from yt_dlp.extractor.twitter import TwitterIE
     with TemporaryDirectory() as tmp:
         for name in ("first.mp4", "second.mp4", "unfinished.mp4.part", "metadata.json"):
             Path(tmp, name).write_bytes(b"video")
-        info = {"description": "Caption #tags", "entries": [
-            {"requested_downloads": [{"filepath": str(Path(tmp, "second.mp4"))}]},
-            {"requested_downloads": [{"filepath": str(Path(tmp, "first.mp4"))}]},
-        ]}
-        with patch.object(bot.yt_dlp.YoutubeDL, "extract_info", return_value=info):
+        status = {"tweetResult": {"result": {"__typename": "Tweet", "legacy": {
+            "full_text": "Caption #tags", "extended_entities": {"media": [
+                {"type": "video", "video_info": {"variants": [
+                    {"url": "https://video.twimg.com/second.mp4", "content_type": "video/mp4", "bitrate": 1024}]}},
+                {"type": "animated_gif", "video_info": {"variants": [
+                    {"url": "https://video.twimg.com/first.mp4", "content_type": "video/mp4"}]}},
+        ]}}}}}
+
+        def process(self, info, download):
+            assert download
+            name = info["formats"][0]["url"].rsplit("/", 1)[-1]
+            return {"requested_downloads": [{"filepath": str(Path(tmp, name))}]}
+
+        with patch.object(TwitterIE, "_call_graphql_api", return_value=status), \
+                patch.object(bot.yt_dlp.YoutubeDL, "process_ie_result", process):
             files, caption = bot.x_download("https://x.com/i/status/12345", tmp)
             assert [Path(f).name for f in files] == ["second.mp4", "first.mp4"]
             assert caption == "Caption #tags"
-        with patch.object(bot.yt_dlp.YoutubeDL, "extract_info", return_value={}):
+        with patch.object(TwitterIE, "_call_graphql_api", return_value={}):
             try:
                 bot.x_download("https://x.com/i/status/12345", tmp)
             except RuntimeError:
@@ -101,6 +113,59 @@ def check_x():
                 "formats": [{"format_id": "gif", "ext": "mp4", "vcodec": "h264", "acodec": "none",
                              "url": "https://example.com/gif.mp4"}]}, download=False)
             assert selected["format_id"] == "gif"
+
+
+def check_x_photos_and_text():
+    """Photo and text posts must not enter yt-dlp's video-only extractor."""
+    from io import BytesIO
+    from PIL import Image
+    from yt_dlp.extractor.twitter import TwitterIE
+
+    picture = BytesIO()
+    Image.new("RGB", (2, 2), "red").save(picture, format="JPEG")
+    photo = {"type": "photo", "id_str": "1", "media_url_https": "https://pbs.twimg.com/media/photo.jpg"}
+
+    def response(data):
+        return {"tweetResult": {"result": {"__typename": "Tweet", "legacy": data}}}
+
+    with TemporaryDirectory() as tmp, \
+            patch.object(TwitterIE, "_call_graphql_api", return_value=response({
+                "full_text": "Photo caption\n#tags", "extended_entities": {"media": [photo]}})), \
+            patch.object(bot.yt_dlp.YoutubeDL, "urlopen", side_effect=lambda url: BytesIO(picture.getvalue())):
+        files, text = bot.x_download("https://x.com/i/status/2119165445496574408", tmp)
+        assert text == "Photo caption\n#tags"
+        assert len(files) == 1 and Image.open(files[0]).size == (2, 2)
+        with patch.object(TwitterIE, "_call_graphql_api", return_value=response({"full_text": "Only text\nwith *stars*"})):
+            files, text = bot.x_download("https://x.com/i/status/2119165445496574408", tmp)
+            assert files == [] and text == "Only text\nwith *stars*"
+        long_post = response({"full_text": "Truncated…"})
+        long_post["tweetResult"]["result"]["note_tweet"] = {
+            "note_tweet_results": {"result": {"text": "Long post\n" * 1000}}}
+        with patch.object(TwitterIE, "_call_graphql_api", return_value=long_post):
+            files, text = bot.x_download("https://x.com/i/status/2119165445496574408", tmp)
+            assert files == [] and text == "Long post\n" * 1000
+        quote = response({"full_text": "Comment on a quoted photo"})
+        quote["tweetResult"]["result"]["quoted_status_result"] = {"result": {
+            "legacy": {"extended_entities": {"media": [photo]}}}}
+        with patch.object(TwitterIE, "_call_graphql_api", return_value=quote):
+            files, text = bot.x_download("https://x.com/i/status/2119165445496574408", tmp)
+            assert len(files) == 1 and text == "Comment on a quoted photo", "quoted media was dropped"
+        card = response({"full_text": "Card photo"})
+        card["tweetResult"]["result"]["card"] = {"legacy": {"name": "unified_card", "binding_values": [
+            {"key": "unified_card", "value": {"type": "STRING", "string_value":
+                json.dumps({"media_entities": {"1": photo}})}}]}}
+        with patch.object(TwitterIE, "_call_graphql_api", return_value=card):
+            files, text = bot.x_download("https://x.com/i/status/2119165445496574408", tmp)
+            assert len(files) == 1 and text == "Card photo"
+        mixed = response({"full_text": "Mixed", "extended_entities": {"media": [photo,
+            {"type": "video", "video_info": {"variants": [{"url": "https://video.twimg.com/video.mp4"}]}},
+            {**photo, "id_str": "3"}]}})
+        Path(tmp, "video.mp4").write_bytes(b"video")
+        with patch.object(TwitterIE, "_call_graphql_api", return_value=mixed), \
+                patch.object(bot.yt_dlp.YoutubeDL, "process_ie_result", return_value={
+                    "requested_downloads": [{"filepath": str(Path(tmp, "video.mp4"))}]}):
+            files, text = bot.x_download("https://x.com/i/status/2119165445496574408", tmp)
+            assert [Path(f).name for f in files] == ["01.jpg", "video.mp4", "03.jpg"]
 
 
 def check_delivery():
@@ -149,6 +214,27 @@ def check_delivery():
                 assert client.send_file.call_args.kwargs["supports_streaming"]
                 assert list(Path("dl").iterdir()) == []
                 note.delete.assert_awaited_once()
+                # Text-only X posts send literal text without invoking Telegram's file upload.
+                client.send_file.reset_mock()
+                event.reply.reset_mock()
+                with patch.object(bot, "x_download", return_value=([], "Text only\n*literal*")):
+                    await bot.send_external(event, client, None, "https://x.com/i/status/12345")
+                client.send_file.assert_not_awaited()
+                assert event.reply.await_args.args == ("Text only\n*literal*",)
+                assert event.reply.await_args.kwargs == {"parse_mode": None, "link_preview": False}
+                # Telegram limits count UTF-16 units; supplementary emoji must not overflow captions/messages.
+                event.reply.reset_mock()
+                with patch.object(bot, "x_download", return_value=(["photo.jpg"], "😀" * 600)):
+                    await bot.send_external(event, client, None, "https://x.com/i/status/12345")
+                assert client.send_file.call_args.kwargs["caption"] is None
+                assert event.reply.await_args.args == ("😀" * 600,)
+                for long_text in ("😀" * 5000, "a" + "😀" * 3000):
+                    event.reply.reset_mock()
+                    with patch.object(bot, "x_download", return_value=([], long_text)):
+                        await bot.send_external(event, client, None, "https://x.com/i/status/12345")
+                    chunks = [c.args[0] for c in event.reply.await_args_list[1:]]
+                    assert "".join(chunks) == long_text
+                    assert all(len(c.encode("utf-16-le")) <= 8000 for c in chunks)
             finally:
                 os.chdir(old)
     asyncio.run(run())
@@ -223,7 +309,13 @@ def check_spotify_library():
 if __name__ == "__main__":
     check_parsers()
     check_spotify()
+    check_x_photos_and_text()
     check_x()
     check_delivery()
     check_spotify_library()
     print("Spotify/X checks passed")
+    if os.environ.get("X_TEST"):
+        with TemporaryDirectory() as tmp:
+            files, text = bot.x_download(bot.x_parse(os.environ["X_TEST"]), tmp)
+            assert files or text
+            print(f"X live check passed: {len(files)} media files, {len(text)} text characters")
