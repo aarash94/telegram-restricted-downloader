@@ -1,11 +1,14 @@
 """Personal Telegram bot: send it a t.me link, get the message back (restricted or not).
 Send it an Instagram post or reel link, get every photo and video in it.
 Send it a YouTube link, pick video quality or audio only, get the file back.
+Spotify track links return matching YouTube audio; X links return videos and GIFs.
 
 Your own account (user session) fetches + downloads; the bot re-sends to you.
 First run asks for your phone + login code once, then sessions are saved to *.session files.
 """
 import asyncio, json, os, re, shutil
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import instaloader
 import yt_dlp
 from PIL import Image
@@ -37,6 +40,9 @@ LINK = re.compile(r"t\.me/(c/|b/)?(\w+)(?:/\d+)?/(\d+)")
 IG = re.compile(r"instagram\.com/(?:[\w.]+/)?(?:p|reels?|tv)/([\w-]+)")
 # youtube.com/watch?v=ID, youtu.be/ID, /shorts/ID, /live/ID, /embed/ID; ?t= &list= trailing junk ok
 YT = re.compile(r"(?:youtube\.com/(?:watch\?(?:[^&\s]*&)*v=|shorts/|live/|embed/|v/)|youtu\.be/)([\w-]{11})")
+# Only recognize real hosts and complete IDs, then discard untrusted query/path suffixes.
+SPOTIFY = re.compile(r"(?<![\w./:-])(?:https?://open\.spotify\.com/(?:intl-[a-z-]+/)?track/|spotify:track:)([A-Za-z0-9]{22})(?=$|[?\s/#<>])")
+X = re.compile(r"(?<![\w./:-])(?:https?://)?(?:(?:www|m|mobile)\.)?(?:x|twitter)\.com/(?:[\w]+|i/web)/status/(\d+)(?=$|[?\s/#<>])")
 IG_LOADER = instaloader.Instaloader(dirname_pattern="dl/{target}", save_metadata=False, download_video_thumbnails=False,
                                     post_metadata_txt_pattern="", quiet=True, max_connection_attempts=1,
                                     request_timeout=30, fatal_status_codes=[401, 403, 429])
@@ -46,6 +52,7 @@ YT_AUDIO_KBPS = [int(x) for x in os.environ.get("YT_AUDIO_KBPS", "128,192,320").
 # "The page needs to be reloaded" (yt-dlp#16212, #17389). Naming the working clients sidesteps it.
 YT_CLIENTS = [c.strip() for c in os.environ.get("YT_CLIENTS", "default,-tv_downgraded,web_embedded").split(",") if c.strip()]
 YT_PENDING = {}  # callback token -> (chat_id, video_id, title, choices); one entry per open choice keyboard
+SPOTIFY_CLIENT = None  # initialized only on the first track; reused under main's download lock
 
 
 def rich_walk(node, out, media):
@@ -192,7 +199,7 @@ def yt_info(vid):
 YT_BROWSERS = ("brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale")
 
 
-def yt_cookies():
+def yt_cookies(setting="YT_COOKIES"):
     """YouTube walls off some addresses with "Sign in to confirm you're not a bot". Cookies from a
     browser that is signed in to YouTube are the documented way past it.
 
@@ -200,7 +207,7 @@ def yt_cookies():
     firefox:container. A file is the dependable choice on Windows: Chromium cookies are sealed with
     DPAPI, which only opens for the same Windows account that owns the browser profile.
     """
-    v = os.environ.get("YT_COOKIES", "").strip().strip('"')
+    v = os.environ.get(setting, "").strip().strip('"')
     if not v:
         return {}
     if os.path.isfile(v):
@@ -208,7 +215,7 @@ def yt_cookies():
     browser, _, profile = v.partition(":")
     browser = browser.strip().lower()
     if browser not in YT_BROWSERS:  # a path that does not exist is far likelier than a typo'd browser
-        raise RuntimeError(f"YT_COOKIES: {v!r} is neither a readable file nor one of {', '.join(YT_BROWSERS)}")
+        raise RuntimeError(f"{setting}: {v!r} is neither a readable file nor one of {', '.join(YT_BROWSERS)}")
     return {"cookiesfrombrowser": (browser, profile.strip() or None, None, None)}
 
 
@@ -233,6 +240,8 @@ def yt_opts():
     """Settings shared by both yt-dlp calls: no playlist, no chatter, the cookies if configured, the
     player clients that currently work, and where the JavaScript runtime lives."""
     return {"quiet": True, "no_warnings": True, "noplaylist": True,
+            "socket_timeout": 30, "retries": 1, "fragment_retries": 1,
+            "concurrent_fragment_downloads": 1,
             "extractor_args": {"youtube": {"player_client": YT_CLIENTS}}, **yt_cookies(), **yt_js_runtime()}
 
 
@@ -293,12 +302,102 @@ def yt_download(vid, choice, folder, title):
     return max(files, key=os.path.getsize)
 
 
+def spotify_parse(text):
+    m = SPOTIFY.search(text or "")
+    return f"https://open.spotify.com/track/{m.group(1)}" if m else None
+
+
+def x_parse(text):
+    m = X.search(text or "")
+    return f"https://x.com/i/status/{m.group(1)}" if m else None
+
+
+def spotify_download(url, folder):
+    """Blocking: spotDL matches/tags; our downloader owns every media file for cleanup."""
+    global SPOTIFY_CLIENT
+    try:
+        from spotdl import Spotdl
+        from spotdl.utils.metadata import embed_metadata
+    except ImportError as e:
+        raise RuntimeError(T['spotify_install']) from e
+    if SPOTIFY_CLIENT is None:
+        SPOTIFY_CLIENT = Spotdl(client_id="", client_secret="", headless=True,
+            downloader_settings={"format": "m4a", "bitrate": "auto", "threads": 1,
+                "lyrics_providers": [], "audio_providers": ["youtube-music"],
+                "ffmpeg": yt_ffmpeg().get("ffmpeg_location", "ffmpeg")})
+        # Matching can probe YouTube metadata too; give those probes the same cookies/runtime.
+        for provider in SPOTIFY_CLIENT.downloader.audio_providers:
+            opts = {**provider.audio_handler.params, **yt_opts(), "socket_timeout": 30,
+                    "retries": 1, "fragment_retries": 1, "concurrent_fragment_downloads": 1}
+            provider.audio_handler.close()
+            provider.audio_handler = yt_dlp.YoutubeDL(opts)
+    songs = SPOTIFY_CLIENT.search([url])
+    if len(songs) != 1:
+        raise RuntimeError(T['spotify_none'])
+    song = songs[0]
+    source = SPOTIFY_CLIENT.downloader.search(song)
+    vid = yt_parse(source)
+    if not vid:
+        raise RuntimeError(T['spotify_none'])
+    artist = ", ".join(song.artists or [])
+    choice = ("", "ba[ext=m4a]/ba", [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}], 0)
+    path = yt_download(vid, choice, folder, f"{artist} - {song.name}")
+    song.download_url = source
+    embed_metadata(Path(path), song)
+    return str(path), song.name, ", ".join(song.artists or []), song.duration
+
+
+def x_download(url, folder):
+    """Blocking: download every video/GIF of one post, preserving post order."""
+    opts = {"quiet": True, "no_warnings": True, "noprogress": True,
+            "noplaylist": False, "format": "b[ext=mp4]/b", "socket_timeout": 30,
+            "retries": 1, "fragment_retries": 1, "concurrent_fragment_downloads": 1,
+            "outtmpl": os.path.join(folder, "%(autonumber)02d-%(id)s.%(ext)s"),
+            **yt_cookies("X_COOKIES"), **yt_ffmpeg()}
+    with yt_dlp.YoutubeDL(opts) as y:
+        info = y.extract_info(url, download=True) or {}
+    entries = list(info.get("entries") or [info])
+    files = []
+    for entry in entries:
+        for download in (entry or {}).get("requested_downloads") or []:
+            path = download.get("filepath")
+            if path and path.lower().endswith((".mp4", ".webm", ".mov")) and os.path.isfile(path) and os.path.getsize(path):
+                files.append(path)
+    if not files:
+        raise RuntimeError(T['x_none'])
+    caption = info.get("description") or next((e.get("description") for e in entries if e and e.get("description")), "")
+    return files, caption
+
+
+async def send_external(ev, bot, spotify, xurl):
+    """Send a Spotify track or X post and remove all request files even when upload fails."""
+    note = await ev.reply(T['downloading'])
+    try:
+        with TemporaryDirectory(prefix="spotify-" if spotify else "x-", dir="dl") as folder:
+            if spotify:
+                path, title, artist, duration = await asyncio.to_thread(spotify_download, spotify, folder)
+                await bot.send_file(ev.chat_id, path, caption=f"{artist} - {title}"[:1024], parse_mode=None,
+                    attributes=[DocumentAttributeAudio(duration=int(duration or 0), title=title,
+                                                       performer=artist or None, voice=False)], mime_type="audio/mp4")
+            else:
+                files, caption = await asyncio.to_thread(x_download, xurl, folder)
+                await bot.send_file(ev.chat_id, files, caption=caption if len(caption) <= 1024 else None,
+                                    parse_mode=None, supports_streaming=True)
+                if len(caption) > 1024:
+                    for i in range(0, len(caption), 4000):
+                        await ev.reply(caption[i:i + 4000], parse_mode=None)
+    finally:
+        await note.delete()
+    await ev.respond(T['next'])
+
+
 async def main():
     user = await TelegramClient("user", API_ID, API_HASH).start()
     bot = await TelegramClient("bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
     me = await user.get_me()
     os.makedirs("dl", exist_ok=True)
     allowed = OWNERS or [me.id]
+    downloads = asyncio.Lock()  # one active job; also protects shared Instagram and Spotify clients
 
     @bot.on(events.NewMessage(func=lambda e: e.is_private and e.sender_id not in allowed))
     async def deny(ev):
@@ -306,10 +405,17 @@ async def main():
 
     @bot.on(events.NewMessage(from_users=allowed))
     async def save(ev):
+        async with downloads:
+            await save_message(ev)
+
+    async def save_message(ev):
         link, code, vid = parse(ev.raw_text), ig_parse(ev.raw_text), yt_parse(ev.raw_text)
-        if not link and not code and not vid:
+        spotify, xurl = spotify_parse(ev.raw_text), x_parse(ev.raw_text)
+        if not link and not code and not vid and not spotify and not xurl:
             return await ev.respond(T['welcome'] if ev.raw_text.startswith("/start") else T['bad_link'])
         try:
+            if spotify or xurl:
+                return await send_external(ev, bot, spotify, xurl)
             if vid:  # YouTube: show the quality/format menu, download whatever the owner taps
                 note = await ev.reply(T['yt_fetching'])
                 try:
@@ -402,11 +508,15 @@ async def main():
                     await note.delete()
             await ev.respond(T['next'])
         except Exception as e:  # surface every failure to the owner instead of only the log
-            error = ig_error(e) if code else f"{type(e).__name__}: {str(e)[:3000]}"
+            error = ig_error(e) if code else yt_error(e) if spotify else f"{type(e).__name__}: {str(e)[:3000]}"
             await ev.reply(f"{T['error']}\n{error}")
 
     @bot.on(events.CallbackQuery(func=lambda e: (e.data or b"").startswith(b"yt:")))
     async def yt_pick(ev):
+        async with downloads:
+            await download_youtube(ev)
+
+    async def download_youtube(ev):
         try:  # callback data arrives as bytes from Telethon, unlike the message text above
             _, token, index = ev.data.decode().split(":")
             pending = YT_PENDING[token]

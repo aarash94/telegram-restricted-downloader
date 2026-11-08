@@ -1,8 +1,8 @@
 # telegram-restricted-downloader
 
-**Telegram, Instagram and YouTube downloader, as a Telegram bot.** Paste a link, get it back: Telegram messages including channels and groups that block saving and forwarding, Instagram posts and reels, and YouTube videos or audio in the quality you pick.
+**Telegram, Instagram, YouTube, Spotify and X downloader, as a Telegram bot.** Paste a link, get it back: Telegram messages including channels and groups that block saving and forwarding, Instagram posts and reels, YouTube videos or audio in the quality you pick, Spotify tracks matched to YouTube audio, and X videos/GIFs.
 
-One Python file, ~400 lines, no database, no web server.
+One Python file, no database, no web server.
 
 ![demo: paste a link, get the post back](docs/demo.gif)
 
@@ -11,6 +11,8 @@ One Python file, ~400 lines, no database, no web server.
 - 🧱 **Reads Telegram's new rich posts.** Since 2026 some channels publish block-based posts (the Instant View format). Their classic text and media fields are empty, so every other bot of this kind returns nothing. This one flattens the blocks and sends the text plus every photo and video in them.
 - 📸 **Instagram posts and reels.** Every photo and video arrives as one album, caption included. Public posts work anonymously when Instagram permits it; a saved login can be used when it refuses anonymous requests.
 - ▶️ **YouTube, with a menu.** Paste a link and the bot replies with one button per option, each labelled with quality, extension and size. Tap one and the file arrives, named after the video, as a playable video with a preview.
+- 🎵 **Spotify tracks.** Paste a track link and get matching YouTube audio as M4A, with Spotify title, artist, album and cover art. AAC sources are kept without re-encoding; this does not download Spotify's own audio.
+- ✖️ **X/Twitter videos and GIFs.** All videos from the linked post arrive together, with its caption. No extra downloader dependency is needed.
 - 🎬 **Keeps media as media.** Videos stay streamable with their dimensions and duration, voice notes stay voice notes, GIFs stay GIFs, captions and text formatting are preserved.
 - 🔒 **Private by default.** Only the account ids you list can use it. Anyone else gets a polite refusal that shows them their own id.
 - 🌍 **English and Persian replies.** Adding a language is copying one JSON file.
@@ -18,8 +20,8 @@ One Python file, ~400 lines, no database, no web server.
 
 ## Setup
 
-1. **Python 3.10 or newer**, then `pip install -r requirements.txt`. The floor on `yt-dlp` is deliberate: installing it on Python 3.9 fails outright rather than quietly resolving to a build that sees far fewer formats.
-2. **A JavaScript runtime**, only for YouTube: deno or node. YouTube signs its streams with a challenge and yt-dlp runs the solver through one of them. deno is a single `deno.exe` you can drop anywhere. See [YouTube setup](#youtube-setup) if you would rather not touch `PATH`.
+1. **Python 3.11 or newer**, then `pip install -r requirements.txt`. Spotify support uses spotDL 4.6, which requires Python 3.11+. Use Python below 3.16 with the current spotDL release.
+2. **A JavaScript runtime**, for YouTube and Spotify's matching audio: deno or node. YouTube signs its streams with a challenge and yt-dlp runs the solver through one of them. deno is a single `deno.exe` you can drop anywhere. See [YouTube setup](#youtube-setup) if you would rather not touch `PATH`.
 3. Create an application at https://my.telegram.org to get `API_ID` and `API_HASH`, and a bot from [@BotFather](https://t.me/BotFather) to get `BOT_TOKEN`.
 4. `cp .env.example .env` and fill in the values.
 5. `python bot.py`. The first run asks for the phone number and login code of the fetching account, plus the two-step password if enabled. The login is saved to `user.session`, so this happens once.
@@ -41,11 +43,37 @@ https://www.youtube.com/watch?v=ID        YouTube video, pick quality or audio
 https://youtu.be/ID                       same, short form
 https://www.youtube.com/shorts/ID         same, Shorts
 https://www.youtube.com/live/ID           same, a past live stream
+https://open.spotify.com/track/TRACKID    Spotify track, matching audio from YouTube
+https://open.spotify.com/intl-en/track/TRACKID  same, locale-prefixed link
+spotify:track:TRACKID                    same, Spotify URI
+https://x.com/username/status/123         X post, all videos and GIFs
+https://twitter.com/username/status/123   same, legacy Twitter link
 ```
 
 Instagram stories and highlights are not supported. Instagram may limit downloads even for public posts. See [Instagram login](#instagram-login) if it returns `401 Unauthorized` or *"Please wait a few minutes before you try again."*
 
 Playlists are not supported on YouTube: only the single video in the link is offered.
+
+## Spotify
+
+Send a single track link or `spotify:track:ID` URI. spotDL reads its metadata, finds matching audio on YouTube Music, and embeds the title, artist, album and artwork. The bot sends an M4A with Telegram's inline audio player. Matching can fail or find a different recording; it does not guarantee Spotify's original audio.
+
+For speed and lower CPU use, the bot requests AAC/M4A at its source bitrate and skips conversion when that format is available. It reuses one spotDL matcher, disables lyrics searches and processes one download at a time. It does not upscale to 320 kbps. If AAC is unavailable, yt-dlp converts the available audio to M4A. All audio downloads stay in the request folder so failed transfers are cleaned up too.
+
+Spotify requires no additional settings. The existing `YT_COOKIES`, `YT_CLIENTS` and `YT_JS_RUNTIME` settings apply to its YouTube requests too. Install updated requirements and restart the bot after upgrading. Spotify album, playlist, artist and podcast links are not supported.
+
+## X / Twitter
+
+Send an `x.com` or `twitter.com` post link. The bot downloads every video/GIF in that post at the best available combined MP4 quality, with no format-menu round trip or video conversion. It sends multiple videos as an album. Photo-only posts, text-only posts, profiles and Spaces are not supported.
+
+Public posts are attempted without login. For a post requiring access from your own account, set `X_COOKIES` to an exported cookies file or a browser name, using the same syntax as `YT_COOKIES`, then restart:
+
+```env
+X_COOKIES=firefox
+# Or: X_COOKIES=C:\\path\\to\\x-cookies.txt
+```
+
+X and YouTube cookies are configured separately. The signed-in account must have access to the post; deleted or unavailable posts cannot be recovered.
 
 ## Instagram login
 
@@ -168,6 +196,7 @@ Everything lives in `.env` next to `bot.py`. See `.env.example` for the full lis
 | `BOT_LANG` | `en` | Reply language, a file name in `i18n/`. |
 | `IG_USERNAME` | *(empty)* | Instagram username for a session created with `python -m instaloader --login USERNAME`. Empty means anonymous requests. |
 | `IG_SESSIONFILE` | *(empty)* | Saved Instagram session file. Empty uses Instaloader's default location; relative paths start beside `bot.py`. |
+| `X_COOKIES` | *(empty)* | X/Twitter cookies: browser name or exported cookies file. Separate from `YT_COOKIES`. |
 
 ## Keep it running
 
@@ -204,9 +233,12 @@ If a Telegram post type the bot does not understand comes back, it replies with 
 
 ```
 python test_bot.py
+python test_downloaders.py
 ```
 
 Plain asserts, no test framework, and it needs nothing from the network. Instagram photos, reels and mixed albums are checked with a saved test session and simulated network responses, including refused requests. The YouTube format menu is built from a captured format list so the size labels, codec preference and height cap can all be checked offline.
+
+Spotify/X checks cover link validation, client reuse, multi-video posts and upload-failure cleanup. A short generated AAC fixture exercises the real yt-dlp download/postprocessing and spotDL metadata pipeline across separate worker threads, verifies its tags and confirms AAC is not re-encoded. Only network operations are replaced.
 
 `IG_TEST=<shortcode> python test_bot.py` additionally downloads that Instagram post for real.
 
@@ -215,6 +247,8 @@ Plain asserts, no test framework, and it needs nothing from the network. Instagr
 Two Telethon clients run in one process. Your own account (a user session) fetches the Telegram message and, if needed, downloads the media. The bot re-sends it to you. Bots cannot read arbitrary chats or copy out of protected ones, which is why the user session is required. For private chats the fetching account must already be a member.
 
 Instagram posts are fetched with instaloader: anonymously by default, or through its authenticated media endpoint when `IG_USERNAME` names a saved session. YouTube links are read with yt-dlp, which needs no login unless YouTube's challenge forces the question.
+
+Spotify matching and tagging use spotDL; X uses the existing yt-dlp library. Blocking downloads run off the bot's event loop. A shared lock permits one active job, and unique Spotify/X request directories are removed after delivery or upload failure.
 
 The YouTube menu is the only stateful part: an open menu is held in memory under a random token, the buttons carry only that token, and a choice is good once. Formats are selected by a height-bound filter rather than by id, so a format list that differs from the one behind the menu still resolves to something playable.
 

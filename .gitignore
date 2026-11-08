@@ -4,3 +4,4 @@ dl/
 bot.log
 .env
 *cookies*.txt
+__pycache__/
